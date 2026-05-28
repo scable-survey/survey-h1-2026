@@ -606,11 +606,12 @@ function getProjects() {
 function saveProjects(arr) {
   _cloudProjects = arr;
   localStorage.setItem(PROJ_KEY, JSON.stringify(arr));
-  // Sync to cloud (non-blocking)
+  // Sync to cloud via GET (avoids CORS issue with no-cors POST)
   const url = localStorage.getItem(GAS_KEY);
   if (url) {
-    fetch(url, { method:'POST', mode:'no-cors', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ action:'saveProjects', projects: arr }) }).catch(()=>{});
+    const encoded = encodeURIComponent(JSON.stringify(arr));
+    fetch(url + '?action=saveProjects&projects=' + encoded + '&t=' + Date.now())
+      .catch(() => {});
   }
 }
 function getStatus(p) {
@@ -667,8 +668,7 @@ function resetDevLock(id) {
   if(idx>-1){ps[idx].deviceLock=false;saveProjects(ps);}
   // Reset cloud devices
   const url=localStorage.getItem(GAS_KEY);
-  if(url) fetch(url,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({action:'resetDevices',projectId:id})}).catch(()=>{});
+  if(url) fetch(url+'?action=resetDevices&projectId='+encodeURIComponent(id)+'&t='+Date.now()).catch(()=>{});
   renderProjectsTable(); showToast('ปลดล็อค Device เรียบร้อย');
 }
 function deleteProject(id) {
@@ -1038,7 +1038,9 @@ function submitSurvey() {
   };
   if(gasUrl){
     showSubmitLoading('กำลังส่งข้อมูลไปยัง Server...', 'กรุณารอสักครู่ อย่าปิดหน้าต่างนี้');
-    fetch(gasUrl,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'submitResponse',data:rec})}).catch(()=>{}).finally(finish);
+    const encoded = encodeURIComponent(JSON.stringify(rec));
+    fetch(gasUrl + '?action=submitResponse&data=' + encoded + '&t=' + Date.now())
+      .catch(()=>{}).finally(finish);
   } else finish();
 }
 
