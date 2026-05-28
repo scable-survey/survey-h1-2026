@@ -162,6 +162,12 @@ textarea.form-control{resize:vertical;min-height:80px}
 @keyframes spin{to{transform:rotate(360deg)}}
 .loading-overlay{text-align:center;padding:60px 20px}
 .loading-overlay p{color:var(--gray-500);margin-top:12px;font-size:14px}
+/* Submit loading overlay */
+.submit-loading{display:none;position:fixed;inset:0;background:rgba(14,58,112,0.75);z-index:2000;flex-direction:column;align-items:center;justify-content:center;gap:20px}
+.submit-loading.show{display:flex}
+.submit-loading .spin{width:52px;height:52px;border:4px solid rgba(255,255,255,0.3);border-top-color:white;border-radius:50%;animation:spin 0.8s linear infinite}
+.submit-loading p{color:white;font-size:17px;font-weight:600;letter-spacing:0.3px}
+.submit-loading .sub{color:rgba(255,255,255,0.7);font-size:13px;margin-top:-12px}
 
 /* THANK YOU */
 .thankyou-box{text-align:center;padding:60px 36px}
@@ -522,6 +528,7 @@ input:checked+.slider-sw:before{transform:translateX(20px)}
 const CREDS_KEY='h1_admin_creds', GAS_KEY='h1_gas_url', PROJ_KEY='h1_projects_v2';
 const RESP_PREFIX='h1_resp_', DEV_PREFIX='h1_dev_';
 let currentQs=[], filterStatus='', filterQuery='', activeSurveyProject=null, _dupSourceId=null;
+let _gasUrl='', _cloudProjects=[], _cloudDevices={}, _isSyncing=false;
 
 // ============================================================
 // ROUTING
@@ -559,13 +566,53 @@ function doLogin() {
   else { const el=document.getElementById('login-error'); el.style.display='flex'; el.textContent='ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง'; }
 }
 function adminLogout() { sessionStorage.removeItem('h1_admin'); showPage('login'); }
-function showAdminPage() { showPage('admin'); renderProjectsTable(); updateGasStatus(); }
+function showAdminPage() {
+  showPage('admin');
+  updateGasStatus();
+  loadCloudProjects();
+}
+
+async function loadCloudProjects() {
+  const url = localStorage.getItem(GAS_KEY);
+  if (!url) { renderProjectsTable(); return; }
+  // Show loading in table
+  const tbody = document.getElementById('projects-tbody');
+  if (tbody) tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--gray-400);">☁️ กำลังโหลดข้อมูลจาก Cloud...</td></tr>';
+  try {
+    const r = await fetch(url + '?action=getProjects&t=' + Date.now());
+    const d = await r.json();
+    if (d.status === 'ok' && d.projects && d.projects.length > 0) {
+      _cloudProjects = d.projects;
+      localStorage.setItem(PROJ_KEY, JSON.stringify(d.projects));
+    } else {
+      // ไม่มีข้อมูลใน cloud ใช้ localStorage
+      _cloudProjects = JSON.parse(localStorage.getItem(PROJ_KEY)||'[]');
+    }
+  } catch(e) {
+    // Cloud ไม่ตอบ ใช้ localStorage แทน
+    _cloudProjects = JSON.parse(localStorage.getItem(PROJ_KEY)||'[]');
+  }
+  renderProjectsTable();
+}
 
 // ============================================================
 // PROJECTS CRUD
 // ============================================================
-function getProjects() { try { return JSON.parse(localStorage.getItem(PROJ_KEY))||[]; } catch(e){ return []; } }
-function saveProjects(arr) { localStorage.setItem(PROJ_KEY, JSON.stringify(arr)); }
+function getProjects() {
+  // Return cloud projects if available, else localStorage fallback
+  if (_cloudProjects && _cloudProjects.length > 0) return _cloudProjects;
+  try { return JSON.parse(localStorage.getItem(PROJ_KEY))||[]; } catch(e){ return []; }
+}
+function saveProjects(arr) {
+  _cloudProjects = arr;
+  localStorage.setItem(PROJ_KEY, JSON.stringify(arr));
+  // Sync to cloud (non-blocking)
+  const url = localStorage.getItem(GAS_KEY);
+  if (url) {
+    fetch(url, { method:'POST', mode:'no-cors', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ action:'saveProjects', projects: arr }) }).catch(()=>{});
+  }
+}
 function getStatus(p) {
   const now=new Date();
   if(p.dateOpen&&now<new Date(p.dateOpen)) return {key:'upcoming',label:'ยังไม่ถึงเวลา',cls:'badge-warning'};
@@ -618,6 +665,10 @@ function resetDevLock(id) {
   localStorage.removeItem(DEV_PREFIX+id);
   const ps=getProjects(),idx=ps.findIndex(p=>p.id===id);
   if(idx>-1){ps[idx].deviceLock=false;saveProjects(ps);}
+  // Reset cloud devices
+  const url=localStorage.getItem(GAS_KEY);
+  if(url) fetch(url,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({action:'resetDevices',projectId:id})}).catch(()=>{});
   renderProjectsTable(); showToast('ปลดล็อค Device เรียบร้อย');
 }
 function deleteProject(id) {
@@ -826,8 +877,28 @@ function renderQBuilder() {
 // ============================================================
 // SURVEY RENDER
 // ============================================================
-function loadSurvey(code) {
-  const ps=getProjects(), p=ps.find(x=>x.code===code);
+async function loadSurvey(code) {
+  // Try local first
+  let ps = getProjects();
+  let p  = ps.find(x=>x.code===code);
+
+  // If not found locally, try fetching from cloud
+  if (!p) {
+    const url = localStorage.getItem(GAS_KEY);
+    if (url) {
+      try {
+        const r = await fetch(url + '?action=getProjects&t=' + Date.now());
+        const d = await r.json();
+        if (d.status === 'ok' && d.projects) {
+          _cloudProjects = d.projects;
+          localStorage.setItem(PROJ_KEY, JSON.stringify(d.projects));
+          ps = d.projects;
+          p  = ps.find(x=>x.code===code);
+        }
+      } catch(e) {}
+    }
+  }
+
   document.getElementById('sv-loading').style.display='none';
   if(!p){showSvError('🔍','ไม่พบแบบสอบถาม','รหัสโครงการ "'+code+'" ไม่มีในระบบ');return;}
   activeSurveyProject=p;
@@ -835,8 +906,25 @@ function loadSurvey(code) {
   if(p.dateOpen&&now<new Date(p.dateOpen)){showSvError('⏰','ยังไม่ถึงเวลาเปิดรับ','แบบสอบถามนี้จะเปิดในวันที่ '+fmtDate(p.dateOpen));return;}
   if(p.dateClose&&now>new Date(p.dateClose)){showSvError('🔒','สิ้นสุดการรับแบบสอบถาม','ปิดรับแล้วเมื่อ '+fmtDate(p.dateClose));return;}
   if(p.deviceLock!==false){
-    const devs=JSON.parse(localStorage.getItem(DEV_PREFIX+p.id)||'[]');
-    if(devs.includes(getDevId())){showSvError('✅','ท่านได้ทำแบบสอบถามนี้แล้ว','อุปกรณ์ของท่านได้ส่งแบบสอบถามไปแล้ว ขอบคุณสำหรับการประเมิน');return;}
+    // Check local first
+    const localDevs = JSON.parse(localStorage.getItem(DEV_PREFIX+p.id)||'[]');
+    if(localDevs.includes(getDevId())){
+      showSvError('✅','ท่านได้ทำแบบสอบถามนี้แล้ว','อุปกรณ์ของท่านได้ส่งแบบสอบถามไปแล้ว ขอบคุณสำหรับการประเมิน');return;
+    }
+    // Check cloud devices
+    const gasUrl2 = localStorage.getItem(GAS_KEY);
+    if (gasUrl2) {
+      try {
+        const dr = await fetch(gasUrl2 + '?action=getDevices&projectId=' + p.id + '&t=' + Date.now());
+        const dd = await dr.json();
+        if (dd.status==='ok' && dd.devices && dd.devices.includes(getDevId())) {
+          // Mark local too so next time is instant
+          const ld = JSON.parse(localStorage.getItem(DEV_PREFIX+p.id)||'[]');
+          ld.push(getDevId()); localStorage.setItem(DEV_PREFIX+p.id, JSON.stringify(ld));
+          showSvError('✅','ท่านได้ทำแบบสอบถามนี้แล้ว','อุปกรณ์ของท่านได้ส่งแบบสอบถามไปแล้ว ขอบคุณสำหรับการประเมิน');return;
+        }
+      } catch(e) {}
+    }
   }
   document.getElementById('sv-proj-label').textContent=p.name;
   document.getElementById('sv-header').textContent=p.surveyHeader||p.name;
@@ -924,20 +1012,23 @@ function submitSurvey() {
   errEl.style.display='none';
   const btn=document.getElementById('sv-submit');
   btn.disabled=true; btn.textContent='กำลังส่ง...';
+  showSubmitLoading('กำลังบันทึกข้อมูล...', 'กรุณารอสักครู่');
   const rec={id:'r'+Date.now(),projectId:p.id,projectCode:p.code,projectName:p.name,answers,deviceId:getDevId(),submittedAt:new Date().toISOString()};
   // Save local
   const key=RESP_PREFIX+p.id;
   const existing=(()=>{try{return JSON.parse(localStorage.getItem(key)||'[]');}catch(e){return[];}})();
   existing.push(rec); localStorage.setItem(key,JSON.stringify(existing));
-  // Device lock
+  // Device lock — save local + embedded in rec for GAS to store
   if(p.deviceLock!==false){
     const dKey=DEV_PREFIX+p.id;
     const devs=(()=>{try{return JSON.parse(localStorage.getItem(dKey)||'[]');}catch(e){return[];}})();
     devs.push(getDevId()); localStorage.setItem(dKey,JSON.stringify(devs));
+    rec.projectId = p.id; // ensure projectId is set so GAS saves device
   }
   // GAS
   const gasUrl=localStorage.getItem(GAS_KEY);
   const finish=()=>{
+    hideSubmitLoading();
     document.getElementById('sv-content').style.display='none';
     const thanksEl=document.getElementById('sv-thanks');
     thanksEl.style.display='block';
@@ -945,7 +1036,10 @@ function submitSurvey() {
     const msg=p.thankMsg||'ข้อมูลของท่านได้รับการบันทึกเรียบร้อยแล้ว';
     msgEl.innerHTML=msg;
   };
-  if(gasUrl){fetch(gasUrl,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'submitResponse',data:rec})}).catch(()=>{}).finally(finish);}else finish();
+  if(gasUrl){
+    showSubmitLoading('กำลังส่งข้อมูลไปยัง Server...', 'กรุณารอสักครู่ อย่าปิดหน้าต่างนี้');
+    fetch(gasUrl,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'submitResponse',data:rec})}).catch(()=>{}).finally(finish);
+  } else finish();
 }
 
 // ============================================================
@@ -1137,10 +1231,29 @@ function copyEl(id){const txt=document.getElementById(id).textContent;if(txt&&!t
 function closeModal(id){document.getElementById(id).style.display='none';}
 let _toastTimer;
 function showToast(msg){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');clearTimeout(_toastTimer);_toastTimer=setTimeout(()=>el.classList.remove('show'),2600);}
+
+function showSubmitLoading(msg, sub) {
+  const el = document.getElementById('submit-loading');
+  if (!el) return;
+  document.getElementById('submit-loading-msg').textContent = msg || 'กำลังบันทึกข้อมูล...';
+  document.getElementById('submit-loading-sub').textContent = sub || 'กรุณารอสักครู่';
+  el.classList.add('show');
+}
+function hideSubmitLoading() {
+  const el = document.getElementById('submit-loading');
+  if (el) el.classList.remove('show');
+}
 </script>
 <style>
 /* WordPress failsafe - ensure pages stay hidden until JS runs */
 .page:not(.active) { display: none !important; }
 </style>
+
+<!-- SUBMIT LOADING OVERLAY -->
+<div id="submit-loading" class="submit-loading">
+  <div class="spin"></div>
+  <p id="submit-loading-msg">กำลังบันทึกข้อมูล...</p>
+  <div class="sub" id="submit-loading-sub">กรุณารอสักครู่</div>
+</div>
 </body>
 </html>
