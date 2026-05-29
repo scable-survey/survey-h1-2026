@@ -971,13 +971,48 @@ function doRenderSurvey(p) {
   // ตรวจสอบซ้ำทุก 30 วินาที (กรณีเปิดค้างไว้แล้วเวลาหมด)
   if(window._surveyDateTimer) clearInterval(window._surveyDateTimer);
   window._surveyDateTimer = setInterval(checkSurveyDates, 30000);
-  // Device lock — check local ก่อน (เร็ว)
+  // Device lock
   if(p.deviceLock!==false){
+    // 1. Check localStorage ก่อน (เร็วที่สุด ไม่ต้องรอ network)
     const localDevs=JSON.parse(localStorage.getItem(DEV_PREFIX+p.id)||'[]');
-    if(localDevs.includes(getDevId())){showSvError('✅','ท่านได้ทำแบบสอบถามนี้แล้ว','อุปกรณ์ของท่านได้ส่งแบบสอบถามไปแล้ว ขอบคุณสำหรับการประเมิน');return;}
-    // Check cloud ใน background
-    const g2=getGasUrl();
-    if(g2) gasJsonp(g2+'?action=getDevices&projectId='+encodeURIComponent(p.id), function(dd){
+    if(localDevs.includes(getDevId())){
+      showSvError('✅','ท่านได้ทำแบบสอบถามนี้แล้ว','อุปกรณ์ของท่านได้ส่งแบบสอบถามไปแล้ว ขอบคุณสำหรับการประเมิน');
+      return;
+    }
+
+    // 2. Fetch IP + Check IP Lock พร้อมกัน (parallel) — เร็วกว่าทำทีละอัน
+    const gasUrl3 = getGasUrl();
+    const [ipResult, ipCheckResult] = await Promise.all([
+      // Fetch IP
+      fetch('https://api.ipify.org?format=json')
+        .then(r=>r.json()).then(d=>d.ip||'').catch(()=>''),
+      // Pre-check IP ด้วย IP เดิม (ถ้ามี cache)
+      window._clientIP && gasUrl3
+        ? new Promise(resolve=>{
+            gasJsonp(gasUrl3+'?action=checkIP&projectId='+encodeURIComponent(p.id)+'&ip='+encodeURIComponent(window._clientIP),
+              function(d){resolve(d&&d.blocked===true);}, function(){resolve(false);});
+          })
+        : Promise.resolve(false)
+    ]);
+
+    window._clientIP = ipResult || window._clientIP || '';
+
+    // ถ้า IP ใหม่ต่างจาก cache ให้เช็คอีกครั้ง
+    let ipBlocked = ipCheckResult;
+    if(window._clientIP && gasUrl3 && !ipCheckResult){
+      ipBlocked = await new Promise(resolve=>{
+        gasJsonp(gasUrl3+'?action=checkIP&projectId='+encodeURIComponent(p.id)+'&ip='+encodeURIComponent(window._clientIP),
+          function(d){resolve(d&&d.blocked===true);}, function(){resolve(false);});
+      });
+    }
+
+    if(ipBlocked){
+      showSvError('✅','ท่านได้ทำแบบสอบถามนี้แล้ว','อุปกรณ์ของท่านได้ส่งแบบสอบถามไปแล้ว ขอบคุณสำหรับการประเมิน');
+      return;
+    }
+
+    // 3. Check cloud devices ใน background (ไม่บล็อก UI)
+    if(gasUrl3) gasJsonp(gasUrl3+'?action=getDevices&projectId='+encodeURIComponent(p.id), function(dd){
       if(dd&&dd.status==='ok'&&dd.devices&&dd.devices.includes(getDevId())){
         const ld=JSON.parse(localStorage.getItem(DEV_PREFIX+p.id)||'[]');
         ld.push(getDevId()); localStorage.setItem(DEV_PREFIX+p.id,JSON.stringify(ld));
@@ -1088,7 +1123,10 @@ function submitSurvey() {
   const btn=document.getElementById('sv-submit');
   btn.disabled=true; btn.textContent='กำลังส่ง...';
   showSubmitLoading('กำลังบันทึกข้อมูล', 'กรุณารอสักครู่ อย่าปิดหน้าต่างนี้');
-  const rec={id:'r'+Date.now(),projectId:p.id,projectCode:p.code,projectName:p.name,answers,deviceId:getDevId(),submittedAt:new Date().toISOString()};
+  const rec={id:'r'+Date.now(),projectId:p.id,projectCode:p.code,projectName:p.name,answers,deviceId:getDevId(),
+    clientIP:window._clientIP||'',
+    ipWarning:window._ipWarning||false,
+    submittedAt:new Date().toISOString()};
   // Save local
   const key=RESP_PREFIX+p.id;
   const existing=(()=>{try{return JSON.parse(localStorage.getItem(key)||'[]');}catch(e){return[];}})();
@@ -1396,6 +1434,24 @@ function closeModal(id){document.getElementById(id).style.display='none';}
 let _toastTimer;
 function showToast(msg){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');clearTimeout(_toastTimer);_toastTimer=setTimeout(()=>el.classList.remove('show'),2600);}
 
+// ============================================================
+// IP ADDRESS FETCH
+// ============================================================
+let _ipFetched = false;
+async function fetchClientIP() {
+  if (_ipFetched) return;
+  try {
+    const r = await fetch('https://api.ipify.org?format=json');
+    const d = await r.json();
+    window._clientIP = d.ip || '';
+    _ipFetched = true;
+  } catch(e) {
+    window._clientIP = '';
+    _ipFetched = true;
+  }
+}
+
+// ============================================================
 // JSONP — load data from GAS via <script> tag (bypasses CORS)
 let _jsonpCount = 0;
 function gasJsonp(url, onSuccess, onError) {
