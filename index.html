@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>แบบสอบถามความพึงพอใจ SC ABLE</title>
+<title>แบบสอบถามความพึงพอใจ | SC ABLE</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{--primary:#1a56a0;--primary-light:#e8f0fb;--primary-dark:#0e3a70;--success:#10b981;--danger:#ef4444;--warning:#f59e0b;--gray-50:#f9fafb;--gray-100:#f3f4f6;--gray-200:#e5e7eb;--gray-300:#d1d5db;--gray-400:#9ca3af;--gray-500:#6b7280;--gray-600:#4b5563;--gray-700:#374151;--gray-800:#1f2937;--gray-900:#111827;--radius:10px;--shadow:0 2px 12px rgba(0,0,0,0.08);--shadow-md:0 4px 20px rgba(0,0,0,0.12)}
@@ -71,7 +71,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 .badge-gray{background:var(--gray-100);color:var(--gray-600)}
 .qtype-rating{background:#dbeafe;color:#1e40af}.qtype-radio{background:#dcfce7;color:#166534}
 .qtype-checkbox{background:#fef3c7;color:#92400e}.qtype-text{background:#f3f4f6;color:#374151}
-.qtype-textsm{background:#ede9fe;color:#5b21b6}.qtype-heading{background:#fce7f3;color:#9d174d}
+.qtype-textsm{background:#ede9fe;color:#5b21b6}.qtype-heading{background:#fce7f3;color:#9d174d}.qtype-phone{background:#f0fdf4;color:#166534}
 
 /* SURVEY PAGE */
 .survey-wrapper{min-height:100vh;background:linear-gradient(135deg,#1a56a0 0%,#0e3a70 100%);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px}
@@ -242,7 +242,7 @@ input:checked+.slider-sw:before{transform:translateX(20px)}
     <div class="login-card">
       <div class="login-logo">
         <div style="width:60px;height:60px;border-radius:16px;background:var(--primary);color:white;font-size:26px;font-weight:700;display:flex;align-items:center;justify-content:center;margin:0 auto;">S</div>
-        <h2 style="font-size:20px;font-weight:700;color:var(--primary);margin-top:12px;">แบบสอบถามความพึงพอใจ SC ABLE</h2>
+        <h2 style="font-size:20px;font-weight:700;color:var(--primary);margin-top:12px;">ระบบประเมินความพึงพอใจ</h2>
         <p style="color:var(--gray-500);font-size:13px;margin-top:4px;">H1/2026 — Admin Panel</p>
       </div>
       <div class="form-group">
@@ -454,6 +454,7 @@ input:checked+.slider-sw:before{transform:translateX(20px)}
             <button class="btn btn-sm btn-secondary" onclick="addQ('checkbox')">+ Checkbox</button>
             <button class="btn btn-sm btn-secondary" onclick="addQ('textsm')">+ ข้อความสั้น</button>
             <button class="btn btn-sm btn-secondary" onclick="addQ('text')">+ ข้อความยาว</button>
+            <button class="btn btn-sm btn-secondary" onclick="addQ('phone')" style="background:#f0fdf4;color:#166534;border-color:#bbf7d0;">+ เบอร์โทรศัพท์</button>
           </div>
         </div>
         <div id="q-builder"></div>
@@ -810,8 +811,8 @@ function saveProject() {
 // ============================================================
 // QUESTION BUILDER
 // ============================================================
-const QTypes={rating:'คะแนน 1-5',radio:'ตัวเลือกเดียว',checkbox:'หลายตัวเลือก',text:'ข้อความยาว',textsm:'ข้อความสั้น',heading:'หัวข้อ/ข้อความ'};
-const QCls={rating:'qtype-rating',radio:'qtype-radio',checkbox:'qtype-checkbox',text:'qtype-text',textsm:'qtype-textsm',heading:'qtype-heading'};
+const QTypes={rating:'คะแนน 1-5',radio:'ตัวเลือกเดียว',checkbox:'หลายตัวเลือก',text:'ข้อความยาว',textsm:'ข้อความสั้น',heading:'หัวข้อ/ข้อความ',phone:'เบอร์โทรศัพท์'};
+const QCls={rating:'qtype-rating',radio:'qtype-radio',checkbox:'qtype-checkbox',text:'qtype-text',textsm:'qtype-textsm',heading:'qtype-heading',phone:'qtype-phone'};
 
 function addQ(type) {
   currentQs.push({id:'q'+Date.now()+Math.random().toString(36).substr(2,4),type,text:'',required:type!=='heading',
@@ -871,6 +872,8 @@ function renderQBuilder() {
       <button class="btn btn-sm btn-secondary" style="margin-top:8px;" onclick="addOpt(${i})">+ เพิ่มตัวเลือก</button>`;
     } else if(q.type==='textsm'){
       extra=`<div style="font-size:12px;color:var(--gray-500);margin-top:6px;padding:6px 10px;background:white;border-radius:6px;border:1px solid var(--gray-200);">📝 กล่องข้อความสั้น — จำกัด 50 ตัวอักษร</div>`;
+    } else if(q.type==='phone'){
+      extra=`<div style="font-size:12px;color:var(--gray-500);margin-top:6px;padding:6px 10px;background:#f0fdf4;border-radius:6px;border:1px solid #bbf7d0;">📱 กล่องเบอร์โทร — รับเฉพาะตัวเลข 10 หลัก (บันทึกเป็น 0XX-XXX-XXXX)</div>`;
     } else if(q.type==='text'){
       extra=`<div style="font-size:12px;color:var(--gray-500);margin-top:6px;padding:6px 10px;background:white;border-radius:6px;border:1px solid var(--gray-200);">📄 กล่องข้อความยาว — ไม่จำกัดจำนวนตัวอักษร</div>`;
     }
@@ -948,9 +951,26 @@ async function loadSurvey(code) {
 
 function doRenderSurvey(p) {
   activeSurveyProject=p;
-  const now=new Date();
-  if(p.dateOpen&&now<new Date(p.dateOpen)){showSvError('⏰','ยังไม่ถึงเวลาเปิดรับ','แบบสอบถามนี้จะเปิดในวันที่ '+fmtDate(p.dateOpen));return;}
-  if(p.dateClose&&now>new Date(p.dateClose)){showSvError('🔒','สิ้นสุดการรับแบบสอบถาม','ปิดรับแล้วเมื่อ '+fmtDate(p.dateClose));return;}
+  // Real-time date check
+  function checkSurveyDates(){
+    const now=new Date();
+    if(p.dateOpen&&now<new Date(p.dateOpen)){
+      document.getElementById('sv-content').style.display='none';
+      showSvError('⏰','ยังไม่ถึงเวลาเปิดรับ','แบบสอบถามนี้จะเปิดในวันที่ '+fmtDate(p.dateOpen));
+      return false;
+    }
+    if(p.dateClose&&now>new Date(p.dateClose)){
+      document.getElementById('sv-content').style.display='none';
+      showSvError('🔒','สิ้นสุดการรับแบบสอบถาม','ปิดรับแล้วเมื่อ '+fmtDate(p.dateClose));
+      return false;
+    }
+    document.getElementById('sv-error').style.display='none';
+    return true;
+  }
+  if(!checkSurveyDates()) return;
+  // ตรวจสอบซ้ำทุก 30 วินาที (กรณีเปิดค้างไว้แล้วเวลาหมด)
+  if(window._surveyDateTimer) clearInterval(window._surveyDateTimer);
+  window._surveyDateTimer = setInterval(checkSurveyDates, 30000);
   // Device lock — check local ก่อน (เร็ว)
   if(p.deviceLock!==false){
     const localDevs=JSON.parse(localStorage.getItem(DEV_PREFIX+p.id)||'[]');
@@ -1010,6 +1030,12 @@ function renderSvQuestions(qs) {
     } else if(q.type==='textsm'){
       inp=`<input type="text" class="form-control" id="sv_${q.id}" maxlength="50" placeholder="กรอกข้อความ (ไม่เกิน 50 ตัวอักษร)">
         <div style="font-size:11px;color:var(--gray-400);margin-top:4px;">ไม่เกิน 50 ตัวอักษร</div>`;
+    } else if(q.type==='phone'){
+      inp=`<input type="tel" class="form-control" id="sv_${q.id}" maxlength="10" inputmode="numeric" pattern="[0-9]*"
+        placeholder="กรอกเบอร์โทร 10 หลัก เช่น 0991234567"
+        oninput="this.value=this.value.replace(/[^0-9]/g,'')"
+        style="letter-spacing:2px;">
+        <div style="font-size:11px;color:var(--gray-400);margin-top:4px;">กรอกตัวเลข 10 หลัก ระบบจะจัดรูปแบบให้อัตโนมัติ</div>`;
     } else {
       inp=`<textarea class="form-control" id="sv_${q.id}" rows="3" placeholder="กรอกความคิดเห็น..."></textarea>`;
     }
@@ -1042,17 +1068,26 @@ function submitSurvey() {
     else if(q.type==='radio') ans=(document.querySelector(`input[name="sv_${q.id}"]:checked`)||{}).value||'';
     else if(q.type==='checkbox') ans=Array.from(document.querySelectorAll(`input[name="sv_${q.id}"]:checked`)).map(x=>x.value).join(', ');
     else if(q.type==='textsm') ans=(document.getElementById('sv_'+q.id)||{}).value?.trim()||'';
+    else if(q.type==='phone'){
+      const raw=(document.getElementById('sv_'+q.id)||{}).value?.replace(/[^0-9]/g,'')||'';
+      // Format: 0XX-XXX-XXXX
+      ans=raw.length===10?raw.substring(0,3)+'-'+raw.substring(3,6)+'-'+raw.substring(6):raw;
+    }
     else ans=(document.getElementById('sv_'+q.id)||{}).value?.trim()||'';
+    if(q.type==='phone'&&ans&&ans.replace(/[^0-9]/g,'').length!==10&&!firstErr) firstErr='กรุณากรอกเบอร์โทรศัพท์ให้ครบ 10 หลัก';
     if(q.required&&!ans&&!firstErr) firstErr='กรุณาตอบคำถามข้อ '+(qs.filter(x=>x.type!=='heading').indexOf(q)+1)+': '+q.text.replace(/<[^>]*>/g,'');
     const reason=q.hasReason?(document.getElementById('sv_reason_'+q.id)||{}).value?.trim()||'':'';
-    answers[q.id]={question:q.text.replace(/<[^>]*>/g,''),type:q.type,answer:ans,reason};
+    // ถ้าไม่มี hasReason ไม่ส่ง field reason (ไม่สร้าง column ใน GAS)
+    const ansObj={question:q.text.replace(/<[^>]*>/g,''),type:q.type,answer:ans};
+    if(q.hasReason) ansObj.reason=reason;
+    answers[q.id]=ansObj;
   }
   const errEl=document.getElementById('sv-err-msg');
   if(firstErr){errEl.style.display='flex';errEl.textContent=firstErr;return;}
   errEl.style.display='none';
   const btn=document.getElementById('sv-submit');
   btn.disabled=true; btn.textContent='กำลังส่ง...';
-  showSubmitLoading('กำลังบันทึกข้อมูล...', 'กรุณารอสักครู่');
+  showSubmitLoading('กำลังบันทึกข้อมูล', 'กรุณารอสักครู่ อย่าปิดหน้าต่างนี้');
   const rec={id:'r'+Date.now(),projectId:p.id,projectCode:p.code,projectName:p.name,answers,deviceId:getDevId(),submittedAt:new Date().toISOString()};
   // Save local
   const key=RESP_PREFIX+p.id;
@@ -1077,7 +1112,7 @@ function submitSurvey() {
     msgEl.innerHTML=msg;
   };
   if(gasUrl){
-    showSubmitLoading('กำลังส่งข้อมูลไปยัง Server...', 'กรุณารอสักครู่ อย่าปิดหน้าต่างนี้');
+    showSubmitLoading('กำลังบันทึกข้อมูล', 'กรุณารอสักครู่ อย่าปิดหน้าต่างนี้');
     gasFormPost(gasUrl, { action: 'submitResponse', data: JSON.stringify(rec) });
     // Wait 3s for form submit then show thank you
     setTimeout(finish, 3000);
