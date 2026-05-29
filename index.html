@@ -897,54 +897,60 @@ function renderQBuilder() {
 // SURVEY RENDER
 // ============================================================
 async function loadSurvey(code) {
-  // Try local first
-  let ps = getProjects();
-  let p  = ps.find(x=>x.code===code);
+  // 1. โหลด cache จาก localStorage ก่อนทันที (ไม่ต้องรอ network)
+  let cached = JSON.parse(localStorage.getItem(PROJ_KEY)||'[]');
+  let p = cached.find(x=>x.code===code);
 
-  // If not found locally, try fetching from cloud
-  if (!p) {
+  if (p) {
+    // แสดงผลจาก cache ก่อนเลย — เร็วมาก
+    document.getElementById('sv-loading').style.display='none';
+    doRenderSurvey(p);
+    // Sync cloud ใน background ไม่บล็อก UI
     const url = getGasUrl();
-    if (url) {
-      await new Promise(resolve => {
-        gasJsonp(url + '?action=getProjects', function(d) {
-          if (d && d.status === 'ok' && d.projects) {
-            _cloudProjects = d.projects;
-            localStorage.setItem(PROJ_KEY, JSON.stringify(d.projects));
-            ps = d.projects;
-            p  = ps.find(x=>x.code===code);
-          }
-          resolve();
-        }, resolve);
-      });
-    }
+    if (url) gasJsonp(url+'?action=getProjects', function(d){
+      if(d&&d.status==='ok'&&d.projects) localStorage.setItem(PROJ_KEY, JSON.stringify(d.projects));
+    }, function(){});
+    return;
   }
 
+  // 2. ไม่มี cache — fetch จาก cloud (เฉพาะครั้งแรก)
+  const url = getGasUrl();
+  if (url) {
+    await new Promise(resolve => {
+      gasJsonp(url+'?action=getProjects', function(d) {
+        if(d&&d.status==='ok'&&d.projects){
+          localStorage.setItem(PROJ_KEY, JSON.stringify(d.projects));
+          _cloudProjects = d.projects;
+          p = d.projects.find(x=>x.code===code);
+        }
+        resolve();
+      }, resolve);
+    });
+  }
   document.getElementById('sv-loading').style.display='none';
   if(!p){showSvError('🔍','ไม่พบแบบสอบถาม','รหัสโครงการ "'+code+'" ไม่มีในระบบ');return;}
+  doRenderSurvey(p);
+}
+
+function doRenderSurvey(p) {
   activeSurveyProject=p;
   const now=new Date();
   if(p.dateOpen&&now<new Date(p.dateOpen)){showSvError('⏰','ยังไม่ถึงเวลาเปิดรับ','แบบสอบถามนี้จะเปิดในวันที่ '+fmtDate(p.dateOpen));return;}
   if(p.dateClose&&now>new Date(p.dateClose)){showSvError('🔒','สิ้นสุดการรับแบบสอบถาม','ปิดรับแล้วเมื่อ '+fmtDate(p.dateClose));return;}
+  // Device lock — check local ก่อน (เร็ว)
   if(p.deviceLock!==false){
-    // Check local first
-    const localDevs = JSON.parse(localStorage.getItem(DEV_PREFIX+p.id)||'[]');
-    if(localDevs.includes(getDevId())){
-      showSvError('✅','ท่านได้ทำแบบสอบถามนี้แล้ว','อุปกรณ์ของท่านได้ส่งแบบสอบถามไปแล้ว ขอบคุณสำหรับการประเมิน');return;
-    }
-    // Check cloud devices
-    const gasUrl2 = getGasUrl();
-    if (gasUrl2) {
-      const devBlocked = await new Promise(resolve => {
-        gasJsonp(gasUrl2 + '?action=getDevices&projectId=' + encodeURIComponent(p.id), function(dd) {
-          if (dd && dd.status==='ok' && dd.devices && dd.devices.includes(getDevId())) {
-            const ld = JSON.parse(localStorage.getItem(DEV_PREFIX+p.id)||'[]');
-            ld.push(getDevId()); localStorage.setItem(DEV_PREFIX+p.id, JSON.stringify(ld));
-            resolve(true);
-          } else resolve(false);
-        }, () => resolve(false));
-      });
-      if (devBlocked) { showSvError('✅','ท่านได้ทำแบบสอบถามนี้แล้ว','อุปกรณ์ของท่านได้ส่งแบบสอบถามไปแล้ว ขอบคุณสำหรับการประเมิน'); return; }
-    }
+    const localDevs=JSON.parse(localStorage.getItem(DEV_PREFIX+p.id)||'[]');
+    if(localDevs.includes(getDevId())){showSvError('✅','ท่านได้ทำแบบสอบถามนี้แล้ว','อุปกรณ์ของท่านได้ส่งแบบสอบถามไปแล้ว ขอบคุณสำหรับการประเมิน');return;}
+    // Check cloud ใน background
+    const g2=getGasUrl();
+    if(g2) gasJsonp(g2+'?action=getDevices&projectId='+encodeURIComponent(p.id), function(dd){
+      if(dd&&dd.status==='ok'&&dd.devices&&dd.devices.includes(getDevId())){
+        const ld=JSON.parse(localStorage.getItem(DEV_PREFIX+p.id)||'[]');
+        ld.push(getDevId()); localStorage.setItem(DEV_PREFIX+p.id,JSON.stringify(ld));
+        document.getElementById('sv-content').style.display='none';
+        showSvError('✅','ท่านได้ทำแบบสอบถามนี้แล้ว','อุปกรณ์ของท่านได้ส่งแบบสอบถามไปแล้ว ขอบคุณสำหรับการประเมิน');
+      }
+    }, function(){});
   }
   document.getElementById('sv-proj-label').textContent=p.name;
   document.getElementById('sv-header').textContent=p.surveyHeader||p.name;
