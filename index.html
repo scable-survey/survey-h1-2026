@@ -541,7 +541,7 @@ const CREDS_KEY='h1_admin_creds', GAS_KEY='h1_gas_url', PROJ_KEY='h1_projects_v2
 const RESP_PREFIX='h1_resp_', DEV_PREFIX='h1_dev_';
 // GAS URL hardcoded — ใช้ได้ทุกเครื่องโดยไม่ต้องตั้งค่า
 const GAS_URL_DEFAULT = 'https://script.google.com/macros/s/AKfycbwYb_NxFA4LbNNqvasBjkDJ5tu3iDQ4rsnLk3Tx67DiWyVmC_5fcD_bDiofk2IQGADbQw/exec';
-let currentQs=[], filterStatus='', filterQuery='', activeSurveyProject=null, _dupSourceId=null;
+let currentQs=[], filterStatus='', filterQuery='', activeSurveyProject=null, _dupSourceId=null, _cloudRespCounts={};
 let _gasUrl='', _cloudProjects=[], _cloudDevices={}, _isSyncing=false;
 
 // ============================================================
@@ -609,10 +609,23 @@ function loadCloudProjects() {
       _cloudProjects = JSON.parse(localStorage.getItem(PROJ_KEY)||'[]');
     }
     renderProjectsTable();
+    // Load response counts from GAS
+    loadCloudRespCounts();
   }, function() {
     _cloudProjects = JSON.parse(localStorage.getItem(PROJ_KEY)||'[]');
     renderProjectsTable();
   });
+}
+
+function loadCloudRespCounts() {
+  const url = getGasUrl();
+  if (!url) return;
+  gasJsonp(url + '?action=getRespCounts', function(d) {
+    if (d && d.status === 'ok' && d.counts) {
+      _cloudRespCounts = d.counts;
+      renderProjectsTable();
+    }
+  }, function(){});
 }
 
 // ============================================================
@@ -647,7 +660,7 @@ function renderProjectsTable() {
   if(!list.length){ tbody.innerHTML='<tr><td colspan="9"><div class="empty-state"><div class="icon">📋</div><p>ไม่มีโครงการ</p></div></td></tr>'; return; }
   const origin=window.location.origin+window.location.pathname;
   tbody.innerHTML=list.map((p,i)=>{
-    const st=getStatus(p), resps=getProjectResponses(p.id).length;
+    const st=getStatus(p), resps=(_cloudRespCounts[p.id]||getProjectResponses(p.id).length);
     const url=origin+'#/survey2026/h1_'+p.code;
     const devCount=(()=>{try{return JSON.parse(localStorage.getItem(DEV_PREFIX+p.id)||'[]').length;}catch(e){return 0;}})();
     return `<tr>
@@ -1077,7 +1090,41 @@ function getProjectResponses(pid){try{return JSON.parse(localStorage.getItem(RES
 function loadResponsesView(pid){
   const container=document.getElementById('responses-content');
   if(!pid){container.innerHTML='<div class="empty-state"><div class="icon">📊</div><p>เลือกโครงการเพื่อดูผลการประเมิน</p></div>';return;}
-  const p=getProjects().find(x=>x.id===pid), rs=getProjectResponses(pid);
+  const p=getProjects().find(x=>x.id===pid);
+  container.innerHTML='<div style="text-align:center;padding:40px;color:var(--gray-400);">☁️ กำลังโหลดผลการประเมินจาก Cloud...</div>';
+  // Load from GAS first, fallback to localStorage
+  const url=getGasUrl();
+  const code=p?p.code:'';
+  if(url&&code){
+    gasJsonp(url+'?action=getResponses&projectId='+encodeURIComponent(code), function(d){
+      if(d&&d.status==='ok'&&d.data&&d.data.length>1){
+        // Convert sheet rows to response objects
+        const rows=d.data, headers=rows[0];
+        const rs=rows.slice(1).map(function(row){
+          const ans={};
+          if(p&&p.questions){
+            p.questions.filter(q=>q.type!=='heading').forEach(function(q,qi){
+              const colIdx=5+(qi*2);
+              ans[q.id]={question:q.text.replace(/<[^>]*>/g,''),type:q.type,answer:row[colIdx]||'',reason:q.hasReason?(row[colIdx+1]||''):undefined};
+            });
+          }
+          return {id:row[0],projectName:row[1],projectCode:row[2],submittedAt:row[3],deviceId:row[4],answers:ans};
+        });
+        renderResponsesView(container,p,rs,pid);
+      } else {
+        // Fallback to localStorage
+        const rs=getProjectResponses(pid);
+        if(!rs.length){container.innerHTML='<div class="empty-state"><div class="icon">📭</div><p>ยังไม่มีการตอบแบบสอบถาม</p></div>';return;}
+        renderResponsesView(container,p,rs,pid);
+      }
+    }, function(){
+      const rs=getProjectResponses(pid);
+      if(!rs.length){container.innerHTML='<div class="empty-state"><div class="icon">📭</div><p>ยังไม่มีการตอบแบบสอบถาม</p></div>';return;}
+      renderResponsesView(container,p,rs,pid);
+    });
+    return;
+  }
+  const rs=getProjectResponses(pid);
   if(!rs.length){container.innerHTML='<div class="empty-state"><div class="icon">📭</div><p>ยังไม่มีการตอบแบบสอบถาม</p></div>';return;}
   const qs=(p&&p.questions)||[], total=rs.length;
   let statsHtml='';
@@ -1094,6 +1141,52 @@ function loadResponsesView(pid){
         <div style="margin-bottom:14px;"><span style="font-size:30px;font-weight:700;color:var(--primary);">${avg}</span><span style="color:var(--gray-400);font-size:14px;"> / ${max}</span><span style="font-size:13px;color:var(--gray-500);margin-left:8px;">(${vals.length} คนตอบ)</span></div>
         ${Object.entries(dist).map(([k,v])=>`<div class="response-count-bar"><span class="label">⭐ ${k}</span><div class="bar"><div class="bar-fill" style="width:${total?Math.round(v/total*100):0}%"></div></div><span class="count">${v} (${total?Math.round(v/total*100):0}%)</span></div>`).join('')}
         ${reasons.length?`<div style="margin-top:10px;border-top:1px solid var(--gray-100);padding-top:10px;"><div style="font-size:12px;font-weight:600;color:var(--gray-500);margin-bottom:6px;">ข้อเสนอแนะ/เหตุผล:</div>${reasons.map(c=>`<div style="padding:6px 10px;background:var(--gray-50);border-radius:6px;margin-bottom:4px;font-size:13px;">${c}</div>`).join('')}</div>`:''}
+      </div>`;
+    } else if(q.type==='radio'||q.type==='checkbox'){
+      const allA=rs.flatMap(r=>((r.answers[q.id]||{}).answer||'').split(', ').filter(Boolean));
+      const dist={};(q.options||[]).forEach(o=>dist[o]=0);allA.forEach(a=>{if(dist[a]!==undefined)dist[a]++;});
+      statsHtml+=`<div class="card"><div class="card-title" style="margin-bottom:12px;">${qLabel}</div>
+        ${Object.entries(dist).map(([k,v])=>`<div class="response-count-bar"><span class="label">${k}</span><div class="bar"><div class="bar-fill" style="width:${total?Math.round(v/total*100):0}%"></div></div><span class="count">${v} (${total?Math.round(v/total*100):0}%)</span></div>`).join('')}
+      </div>`;
+    } else {
+      const comms=rs.map(r=>(r.answers[q.id]||{}).answer).filter(Boolean);
+      statsHtml+=`<div class="card"><div class="card-title" style="margin-bottom:12px;">${qLabel}</div>
+        <div style="max-height:200px;overflow-y:auto;">${comms.length?comms.map(c=>`<div style="padding:8px 12px;background:var(--gray-50);border-radius:6px;margin-bottom:6px;font-size:14px;">${c}</div>`).join(''):'<p style="color:var(--gray-400);font-size:14px;">ไม่มีความคิดเห็น</p>'}</div>
+      </div>`;
+    }
+  });
+  const visQs=qs.filter(q=>q.type!=='heading');
+  const headers=['#','วันที่ส่ง',...visQs.flatMap(q=>[q.text.replace(/<[^>]*>/g,'').substring(0,20),q.hasReason?'เหตุผล/เสนอแนะ':null].filter(Boolean))];
+  const rows=rs.map((r,i)=>`<tr><td>${i+1}</td><td style="white-space:nowrap;font-size:12px;">${fmtDate(r.submittedAt)}</td>${visQs.flatMap(q=>{const a=r.answers[q.id]||{};const cells=[`<td style="font-size:13px;">${a.answer||'—'}</td>`];if(q.hasReason)cells.push(`<td style="font-size:12px;color:var(--gray-500);">${a.reason||'—'}</td>`);return cells;}).join('')}</tr>`).join('');
+  container.innerHTML=`
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-label">ผู้ตอบทั้งหมด</div><div class="stat-value">${total}</div></div>
+      <div class="stat-card"><div class="stat-label">โครงการ</div><div class="stat-value" style="font-size:15px;">${p?p.name:''}</div></div>
+    </div>
+    ${statsHtml}
+    <div class="card">
+      <div class="card-header"><div class="card-title">รายละเอียดทั้งหมด</div><button class="btn btn-sm btn-success" onclick="exportCsv('${pid}')">📥 Export CSV</button></div>
+      <div class="table-wrap"><table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>
+    </div>`;
+}
+
+function renderResponsesView(container, p, rs, pid) {
+  if(!rs||!rs.length){container.innerHTML='<div class="empty-state"><div class="icon">📭</div><p>ยังไม่มีการตอบแบบสอบถาม</p></div>';return;}
+  const qs=(p&&p.questions)||[], total=rs.length;
+  let statsHtml='';
+  qs.filter(q=>q.type!=='heading').forEach(q=>{
+    const qLabel=q.text.replace(/<[^>]*>/g,'');
+    if(q.type==='rating'){
+      const vals=rs.map(r=>parseInt((r.answers[q.id]||{}).answer)).filter(v=>!isNaN(v));
+      const avg=vals.length?(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(2):'-';
+      const max=q.maxRating||5,dist={};
+      for(let i=1;i<=max;i++)dist[i]=0;
+      vals.forEach(v=>{if(dist[v]!==undefined)dist[v]++;});
+      const reasons=rs.map(r=>(r.answers[q.id]||{}).reason).filter(Boolean);
+      statsHtml+=`<div class="card"><div class="card-title" style="margin-bottom:12px;">${qLabel}</div>
+        <div style="margin-bottom:14px;"><span style="font-size:30px;font-weight:700;color:var(--primary);">${avg}</span><span style="color:var(--gray-400);font-size:14px;"> / ${max}</span><span style="font-size:13px;color:var(--gray-500);margin-left:8px;">(${vals.length} คนตอบ)</span></div>
+        ${Object.entries(dist).map(([k,v])=>`<div class="response-count-bar"><span class="label">⭐ ${k}</span><div class="bar"><div class="bar-fill" style="width:${total?Math.round(v/total*100):0}%"></div></div><span class="count">${v} (${total?Math.round(v/total*100):0}%)</span></div>`).join('')}
+        ${reasons.length?`<div style="margin-top:10px;border-top:1px solid var(--gray-100);padding-top:10px;"><div style="font-size:12px;font-weight:600;color:var(--gray-500);margin-bottom:6px;">ข้อเสนอแนะ:</div>${reasons.map(c=>`<div style="padding:6px 10px;background:var(--gray-50);border-radius:6px;margin-bottom:4px;font-size:13px;">${c}</div>`).join('')}</div>`:''}
       </div>`;
     } else if(q.type==='radio'||q.type==='checkbox'){
       const allA=rs.flatMap(r=>((r.answers[q.id]||{}).answer||'').split(', ').filter(Boolean));
