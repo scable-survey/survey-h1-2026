@@ -949,7 +949,7 @@ async function loadSurvey(code) {
   doRenderSurvey(p);
 }
 
-function doRenderSurvey(p) {
+async function doRenderSurvey(p) {
   activeSurveyProject=p;
   // Real-time date check
   function checkSurveyDates(){
