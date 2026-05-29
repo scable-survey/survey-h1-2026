@@ -76,9 +76,11 @@ textarea.form-control{resize:vertical;min-height:80px}
 /* SURVEY PAGE */
 .survey-wrapper{min-height:100vh;background:linear-gradient(135deg,#1a56a0 0%,#0e3a70 100%);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px}
 .survey-card{background:white;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,0.25);width:100%;max-width:700px;overflow:hidden}
-.survey-header-blk{background:linear-gradient(135deg,#1a56a0 0%,#0e3a70 100%);color:white;padding:36px 36px 28px}
-.survey-header-blk h1{font-size:22px;font-weight:700;margin-bottom:10px;line-height:1.4}
-.survey-header-blk .sv-desc-area{font-size:14px;opacity:0.9;line-height:1.8}
+.survey-header-blk{background:linear-gradient(135deg,#1a56a0 0%,#0e3a70 100%);color:white!important;padding:36px 36px 28px}
+.survey-header-blk *{color:white!important;background:transparent!important}
+.survey-header-blk h1{font-size:22px;font-weight:700;margin-bottom:10px;line-height:1.4;color:white!important}
+.survey-header-blk .sv-desc-area{font-size:14px;opacity:0.9;line-height:1.8;color:white!important}
+.sv-desc-area *{color:white!important;background:transparent!important;font-family:'Sarabun','Noto Sans Thai',sans-serif!important}
 .survey-header-blk .sv-desc-area strong,.survey-header-blk .sv-desc-area b{font-weight:700}
 .survey-header-blk .sv-desc-area em,.survey-header-blk .sv-desc-area i{font-style:italic}
 .survey-header-blk .sv-desc-area u{text-decoration:underline}
@@ -223,6 +225,16 @@ input:checked+.slider-sw:before{transform:translateX(20px)}
 </head>
 <body>
 <div id="toast"></div>
+
+<!-- ===== BLANK PAGE (URL เปล่า ไม่แสดงอะไร) ===== -->
+<div id="page-blank" class="page">
+  <div style="min-height:100vh;background:#f0f4f8;display:flex;align-items:center;justify-content:center;">
+    <div style="text-align:center;color:var(--gray-300);">
+      <div style="font-size:64px;margin-bottom:16px;">🔒</div>
+      <div style="font-size:16px;color:var(--gray-400);">ไม่พบหน้าที่ต้องการ</div>
+    </div>
+  </div>
+</div>
 
 <!-- ===== LOGIN ===== -->
 <div id="page-login" class="page">
@@ -527,6 +539,8 @@ input:checked+.slider-sw:before{transform:translateX(20px)}
 // ============================================================
 const CREDS_KEY='h1_admin_creds', GAS_KEY='h1_gas_url', PROJ_KEY='h1_projects_v2';
 const RESP_PREFIX='h1_resp_', DEV_PREFIX='h1_dev_';
+// GAS URL hardcoded — ใช้ได้ทุกเครื่องโดยไม่ต้องตั้งค่า
+const GAS_URL_DEFAULT = 'https://script.google.com/macros/s/AKfycbwYb_NxFA4LbNNqvasBjkDJ5tu3iDQ4rsnLk3Tx67DiWyVmC_5fcD_bDiofk2IQGADbQw/exec';
 let currentQs=[], filterStatus='', filterQuery='', activeSurveyProject=null, _dupSourceId=null;
 let _gasUrl='', _cloudProjects=[], _cloudDevices={}, _isSyncing=false;
 
@@ -534,16 +548,26 @@ let _gasUrl='', _cloudProjects=[], _cloudDevices={}, _isSyncing=false;
 // ROUTING
 // ============================================================
 function router() {
+  // Auto-set GAS URL from hardcoded default if not set
+  if (!localStorage.getItem(GAS_KEY) && GAS_URL_DEFAULT) {
+    localStorage.setItem(GAS_KEY, GAS_URL_DEFAULT);
+  }
   const hash = window.location.hash.replace('#','');
   const path = window.location.pathname;
   const combined = hash || path;
+
+  // Admin page — ต้องมี #/h1-2026-admin ใน hash เท่านั้น
   if (combined.includes('h1-2026-admin')) {
     sessionStorage.getItem('h1_admin') ? showAdminPage() : showPage('login');
     return;
   }
+
+  // Survey page
   const m = combined.match(/survey2026\/h1_([A-Za-z0-9]+)/);
   if (m) { showPage('survey'); loadSurvey(m[1].toUpperCase()); return; }
-  showPage('login');
+
+  // URL เปล่าหรือไม่รู้จัก — แสดงหน้าว่าง (ไม่แสดง login)
+  showPage('blank');
 }
 window.addEventListener('hashchange', router);
 // WordPress-safe: delay routing until all scripts are ready
@@ -573,7 +597,7 @@ function showAdminPage() {
 }
 
 function loadCloudProjects() {
-  const url = localStorage.getItem(GAS_KEY);
+  const url = getGasUrl();
   if (!url) { renderProjectsTable(); return; }
   const tbody = document.getElementById('projects-tbody');
   if (tbody) tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--gray-400);">☁️ กำลังโหลดข้อมูลจาก Cloud...</td></tr>';
@@ -603,7 +627,7 @@ function saveProjects(arr) {
   _cloudProjects = arr;
   localStorage.setItem(PROJ_KEY, JSON.stringify(arr));
   // Use hidden iframe form POST — bypasses CORS completely, no URL length limit
-  const url = localStorage.getItem(GAS_KEY);
+  const url = getGasUrl();
   if (url) gasFormPost(url, { action: 'saveProjects', projects: JSON.stringify(arr) });
 }
 function getStatus(p) {
@@ -659,7 +683,7 @@ function resetDevLock(id) {
   const ps=getProjects(),idx=ps.findIndex(p=>p.id===id);
   if(idx>-1){ps[idx].deviceLock=false;saveProjects(ps);}
   // Reset cloud devices
-  const url=localStorage.getItem(GAS_KEY);
+  const url=getGasUrl();
   if(url) gasFormPost(url, { action:'resetDevices', projectId: id });
   renderProjectsTable(); showToast('ปลดล็อค Device เรียบร้อย');
 }
@@ -778,7 +802,7 @@ const QCls={rating:'qtype-rating',radio:'qtype-radio',checkbox:'qtype-checkbox',
 function addQ(type) {
   currentQs.push({id:'q'+Date.now()+Math.random().toString(36).substr(2,4),type,text:'',required:type!=='heading',
     options:(type==='radio'||type==='checkbox')?['ตัวเลือก 1','ตัวเลือก 2']:[],
-    maxRating:5,minLabel:'น้อยที่สุด',maxLabel:'มากที่สุด',hasReason:false});
+    maxRating:5,minLabel:'น้อยที่สุด',maxLabel:'มากที่สุด',hasReason:false,hideNumber:false});
   renderQBuilder();
   setTimeout(()=>{const el=document.getElementById('q-builder').lastElementChild;if(el)el.scrollIntoView({behavior:'smooth',block:'nearest'});},80);
 }
@@ -846,6 +870,9 @@ function renderQBuilder() {
     const requiredToggle = !isHeading ? `
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-top:6px;">
         <input type="checkbox" ${q.required?'checked':''} onchange="updQ(${i},'required',this.checked)"> จำเป็นต้องตอบ
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-top:4px;">
+        <input type="checkbox" ${q.hideNumber?'checked':''} onchange="updQ(${i},'hideNumber',this.checked)"> ซ่อนเลขข้อคำถาม
       </label>` : '';
 
     return `<div class="qitem">
@@ -876,7 +903,7 @@ async function loadSurvey(code) {
 
   // If not found locally, try fetching from cloud
   if (!p) {
-    const url = localStorage.getItem(GAS_KEY);
+    const url = getGasUrl();
     if (url) {
       await new Promise(resolve => {
         gasJsonp(url + '?action=getProjects', function(d) {
@@ -905,7 +932,7 @@ async function loadSurvey(code) {
       showSvError('✅','ท่านได้ทำแบบสอบถามนี้แล้ว','อุปกรณ์ของท่านได้ส่งแบบสอบถามไปแล้ว ขอบคุณสำหรับการประเมิน');return;
     }
     // Check cloud devices
-    const gasUrl2 = localStorage.getItem(GAS_KEY);
+    const gasUrl2 = getGasUrl();
     if (gasUrl2) {
       const devBlocked = await new Promise(resolve => {
         gasJsonp(gasUrl2 + '?action=getDevices&projectId=' + encodeURIComponent(p.id), function(dd) {
@@ -968,7 +995,7 @@ function renderSvQuestions(qs) {
     }
     const reasonBlock=q.hasReason?`<div class="reason-block"><label>เหตุผลที่ให้คะแนน และข้อเสนอแนะเพิ่มเติม</label><textarea id="sv_reason_${q.id}" placeholder="กรอกเหตุผลหรือข้อเสนอแนะ (ถ้ามี)..."></textarea></div>`:'';
     return `<div class="question-block">
-      <div class="question-label">${num}. <span>${q.text||''}</span>${q.required?'<span class="question-required">*</span>':''}</div>
+      <div class="question-label">${q.hideNumber?'':'<span style="margin-right:4px;">'+(num)+'.</span>'}<span>${q.text||''}</span>${q.required?'<span class="question-required">*</span>':''}</div>
       ${inp}
       ${reasonBlock}
     </div>`;
@@ -1019,7 +1046,7 @@ function submitSurvey() {
     rec.projectId = p.id; // ensure projectId is set so GAS saves device
   }
   // GAS
-  const gasUrl=localStorage.getItem(GAS_KEY);
+  const gasUrl=getGasUrl();
   const finish=()=>{
     hideSubmitLoading();
     document.getElementById('sv-content').style.display='none';
@@ -1128,9 +1155,16 @@ function saveAdminCreds(){const u=document.getElementById('s-admin-user').value.
 function saveGasUrl(){const url=document.getElementById('s-gas-url').value.trim();localStorage.setItem(GAS_KEY,url);updateGasStatus();showToast('บันทึก GAS URL แล้ว');}
 function saveGasFromModal(){const url=document.getElementById('gm-url').value.trim();localStorage.setItem(GAS_KEY,url);const el=document.getElementById('s-gas-url');if(el)el.value=url;updateGasStatus();closeModal('gas-modal');showToast('บันทึก GAS URL แล้ว');}
 function showGasConfigModal(){document.getElementById('gm-url').value=localStorage.getItem(GAS_KEY)||'';document.getElementById('gm-result').innerHTML='';document.getElementById('gas-modal').style.display='flex';}
-function updateGasStatus(){const el=document.getElementById('nav-gas-status');if(el)el.textContent=localStorage.getItem(GAS_KEY)?'✅ เชื่อม Google Sheet แล้ว':'⚠️ ยังไม่เชื่อม Google Sheet';}
+function getGasUrl() {
+  return localStorage.getItem(GAS_KEY) || GAS_URL_DEFAULT;
+}
+function updateGasStatus(){
+  const el=document.getElementById('nav-gas-status');
+  const url=getGasUrl();
+  if(el)el.textContent=url?'✅ เชื่อม Google Sheet แล้ว':'⚠️ ยังไม่เชื่อม Google Sheet';
+}
 async function testGas(){
-  const url=localStorage.getItem(GAS_KEY)||document.getElementById('gm-url')?.value||document.getElementById('s-gas-url')?.value;
+  const url=getGasUrl()||document.getElementById('gm-url')?.value||document.getElementById('s-gas-url')?.value;
   const resEl=document.getElementById('gm-result')||document.getElementById('gas-test-res');
   if(!url){if(resEl)resEl.innerHTML='<div class="alert alert-warning">กรุณากรอก URL ก่อน</div>';return;}
   if(resEl)resEl.innerHTML='<div class="alert alert-info">กำลังทดสอบ...</div>';
