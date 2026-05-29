@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ระบบประเมินความพึงพอใจ</title>
+<title>แบบสอบถามความพึงพอใจ SC ABLE</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{--primary:#1a56a0;--primary-light:#e8f0fb;--primary-dark:#0e3a70;--success:#10b981;--danger:#ef4444;--warning:#f59e0b;--gray-50:#f9fafb;--gray-100:#f3f4f6;--gray-200:#e5e7eb;--gray-300:#d1d5db;--gray-400:#9ca3af;--gray-500:#6b7280;--gray-600:#4b5563;--gray-700:#374151;--gray-800:#1f2937;--gray-900:#111827;--radius:10px;--shadow:0 2px 12px rgba(0,0,0,0.08);--shadow-md:0 4px 20px rgba(0,0,0,0.12)}
@@ -242,7 +242,7 @@ input:checked+.slider-sw:before{transform:translateX(20px)}
     <div class="login-card">
       <div class="login-logo">
         <div style="width:60px;height:60px;border-radius:16px;background:var(--primary);color:white;font-size:26px;font-weight:700;display:flex;align-items:center;justify-content:center;margin:0 auto;">S</div>
-        <h2 style="font-size:20px;font-weight:700;color:var(--primary);margin-top:12px;">ระบบประเมินความพึงพอใจ</h2>
+        <h2 style="font-size:20px;font-weight:700;color:var(--primary);margin-top:12px;">แบบสอบถามความพึงพอใจ SC ABLE</h2>
         <p style="color:var(--gray-500);font-size:13px;margin-top:4px;">H1/2026 — Admin Panel</p>
       </div>
       <div class="form-group">
@@ -541,7 +541,7 @@ const CREDS_KEY='h1_admin_creds', GAS_KEY='h1_gas_url', PROJ_KEY='h1_projects_v2
 const RESP_PREFIX='h1_resp_', DEV_PREFIX='h1_dev_';
 // GAS URL hardcoded — ใช้ได้ทุกเครื่องโดยไม่ต้องตั้งค่า
 const GAS_URL_DEFAULT = 'https://script.google.com/macros/s/AKfycbwYb_NxFA4LbNNqvasBjkDJ5tu3iDQ4rsnLk3Tx67DiWyVmC_5fcD_bDiofk2IQGADbQw/exec';
-let currentQs=[], filterStatus='', filterQuery='', activeSurveyProject=null, _dupSourceId=null, _cloudRespCounts={};
+let currentQs=[], filterStatus='', filterQuery='', activeSurveyProject=null, _dupSourceId=null, _cloudRespCounts={}, _cloudDevCounts={};
 let _gasUrl='', _cloudProjects=[], _cloudDevices={}, _isSyncing=false;
 
 // ============================================================
@@ -623,6 +623,7 @@ function loadCloudRespCounts() {
   gasJsonp(url + '?action=getRespCounts', function(d) {
     if (d && d.status === 'ok' && d.counts) {
       _cloudRespCounts = d.counts;
+      if (d.devCounts) _cloudDevCounts = d.devCounts;
       renderProjectsTable();
     }
   }, function(){});
@@ -662,7 +663,7 @@ function renderProjectsTable() {
   tbody.innerHTML=list.map((p,i)=>{
     const st=getStatus(p), resps=(_cloudRespCounts[p.id]||getProjectResponses(p.id).length);
     const url=origin+'#/survey2026/h1_'+p.code;
-    const devCount=(()=>{try{return JSON.parse(localStorage.getItem(DEV_PREFIX+p.id)||'[]').length;}catch(e){return 0;}})();
+    const devCount=(_cloudDevCounts[p.id]!==undefined?_cloudDevCounts[p.id]:(()=>{try{return JSON.parse(localStorage.getItem(DEV_PREFIX+p.id)||'[]').length;}catch(e){return 0;}})());
     return `<tr>
       <td style="color:var(--gray-400);font-size:13px;">${i+1}</td>
       <td><div style="font-weight:600;font-size:14px;">${p.name}${p.isMaster?'<span class="badge" style="background:#fef3c7;color:#92400e;margin-left:6px;font-size:10px;">⭐ Master</span>':''}</div><div style="font-size:12px;color:var(--gray-400);">${(p.questions||[]).length} คำถาม</div></td>
