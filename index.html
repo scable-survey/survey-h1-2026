@@ -572,27 +572,23 @@ function showAdminPage() {
   loadCloudProjects();
 }
 
-async function loadCloudProjects() {
+function loadCloudProjects() {
   const url = localStorage.getItem(GAS_KEY);
   if (!url) { renderProjectsTable(); return; }
-  // Show loading in table
   const tbody = document.getElementById('projects-tbody');
   if (tbody) tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--gray-400);">☁️ กำลังโหลดข้อมูลจาก Cloud...</td></tr>';
-  try {
-    const r = await fetch(url + '?action=getProjects&t=' + Date.now());
-    const d = await r.json();
-    if (d.status === 'ok' && d.projects && d.projects.length > 0) {
+  gasJsonp(url + '?action=getProjects', function(d) {
+    if (d && d.status === 'ok' && d.projects && d.projects.length > 0) {
       _cloudProjects = d.projects;
       localStorage.setItem(PROJ_KEY, JSON.stringify(d.projects));
     } else {
-      // ไม่มีข้อมูลใน cloud ใช้ localStorage
       _cloudProjects = JSON.parse(localStorage.getItem(PROJ_KEY)||'[]');
     }
-  } catch(e) {
-    // Cloud ไม่ตอบ ใช้ localStorage แทน
+    renderProjectsTable();
+  }, function() {
     _cloudProjects = JSON.parse(localStorage.getItem(PROJ_KEY)||'[]');
-  }
-  renderProjectsTable();
+    renderProjectsTable();
+  });
 }
 
 // ============================================================
@@ -606,13 +602,9 @@ function getProjects() {
 function saveProjects(arr) {
   _cloudProjects = arr;
   localStorage.setItem(PROJ_KEY, JSON.stringify(arr));
-  // Sync to cloud via GET (avoids CORS issue with no-cors POST)
+  // Use hidden iframe form POST — bypasses CORS completely, no URL length limit
   const url = localStorage.getItem(GAS_KEY);
-  if (url) {
-    const encoded = encodeURIComponent(JSON.stringify(arr));
-    fetch(url + '?action=saveProjects&projects=' + encoded + '&t=' + Date.now())
-      .catch(() => {});
-  }
+  if (url) gasFormPost(url, { action: 'saveProjects', projects: JSON.stringify(arr) });
 }
 function getStatus(p) {
   const now=new Date();
@@ -668,7 +660,7 @@ function resetDevLock(id) {
   if(idx>-1){ps[idx].deviceLock=false;saveProjects(ps);}
   // Reset cloud devices
   const url=localStorage.getItem(GAS_KEY);
-  if(url) fetch(url+'?action=resetDevices&projectId='+encodeURIComponent(id)+'&t='+Date.now()).catch(()=>{});
+  if(url) gasFormPost(url, { action:'resetDevices', projectId: id });
   renderProjectsTable(); showToast('ปลดล็อค Device เรียบร้อย');
 }
 function deleteProject(id) {
@@ -886,16 +878,17 @@ async function loadSurvey(code) {
   if (!p) {
     const url = localStorage.getItem(GAS_KEY);
     if (url) {
-      try {
-        const r = await fetch(url + '?action=getProjects&t=' + Date.now());
-        const d = await r.json();
-        if (d.status === 'ok' && d.projects) {
-          _cloudProjects = d.projects;
-          localStorage.setItem(PROJ_KEY, JSON.stringify(d.projects));
-          ps = d.projects;
-          p  = ps.find(x=>x.code===code);
-        }
-      } catch(e) {}
+      await new Promise(resolve => {
+        gasJsonp(url + '?action=getProjects', function(d) {
+          if (d && d.status === 'ok' && d.projects) {
+            _cloudProjects = d.projects;
+            localStorage.setItem(PROJ_KEY, JSON.stringify(d.projects));
+            ps = d.projects;
+            p  = ps.find(x=>x.code===code);
+          }
+          resolve();
+        }, resolve);
+      });
     }
   }
 
@@ -914,16 +907,16 @@ async function loadSurvey(code) {
     // Check cloud devices
     const gasUrl2 = localStorage.getItem(GAS_KEY);
     if (gasUrl2) {
-      try {
-        const dr = await fetch(gasUrl2 + '?action=getDevices&projectId=' + p.id + '&t=' + Date.now());
-        const dd = await dr.json();
-        if (dd.status==='ok' && dd.devices && dd.devices.includes(getDevId())) {
-          // Mark local too so next time is instant
-          const ld = JSON.parse(localStorage.getItem(DEV_PREFIX+p.id)||'[]');
-          ld.push(getDevId()); localStorage.setItem(DEV_PREFIX+p.id, JSON.stringify(ld));
-          showSvError('✅','ท่านได้ทำแบบสอบถามนี้แล้ว','อุปกรณ์ของท่านได้ส่งแบบสอบถามไปแล้ว ขอบคุณสำหรับการประเมิน');return;
-        }
-      } catch(e) {}
+      const devBlocked = await new Promise(resolve => {
+        gasJsonp(gasUrl2 + '?action=getDevices&projectId=' + encodeURIComponent(p.id), function(dd) {
+          if (dd && dd.status==='ok' && dd.devices && dd.devices.includes(getDevId())) {
+            const ld = JSON.parse(localStorage.getItem(DEV_PREFIX+p.id)||'[]');
+            ld.push(getDevId()); localStorage.setItem(DEV_PREFIX+p.id, JSON.stringify(ld));
+            resolve(true);
+          } else resolve(false);
+        }, () => resolve(false));
+      });
+      if (devBlocked) { showSvError('✅','ท่านได้ทำแบบสอบถามนี้แล้ว','อุปกรณ์ของท่านได้ส่งแบบสอบถามไปแล้ว ขอบคุณสำหรับการประเมิน'); return; }
     }
   }
   document.getElementById('sv-proj-label').textContent=p.name;
@@ -1038,9 +1031,9 @@ function submitSurvey() {
   };
   if(gasUrl){
     showSubmitLoading('กำลังส่งข้อมูลไปยัง Server...', 'กรุณารอสักครู่ อย่าปิดหน้าต่างนี้');
-    const encoded = encodeURIComponent(JSON.stringify(rec));
-    fetch(gasUrl + '?action=submitResponse&data=' + encoded + '&t=' + Date.now())
-      .catch(()=>{}).finally(finish);
+    gasFormPost(gasUrl, { action: 'submitResponse', data: JSON.stringify(rec) });
+    // Wait 3s for form submit then show thank you
+    setTimeout(finish, 3000);
   } else finish();
 }
 
@@ -1233,6 +1226,51 @@ function copyEl(id){const txt=document.getElementById(id).textContent;if(txt&&!t
 function closeModal(id){document.getElementById(id).style.display='none';}
 let _toastTimer;
 function showToast(msg){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');clearTimeout(_toastTimer);_toastTimer=setTimeout(()=>el.classList.remove('show'),2600);}
+
+// JSONP — load data from GAS via <script> tag (bypasses CORS)
+let _jsonpCount = 0;
+function gasJsonp(url, onSuccess, onError) {
+  const cbName = '_gasJsonpCb' + (++_jsonpCount);
+  const timeout = setTimeout(() => {
+    delete window[cbName];
+    if (s.parentNode) s.parentNode.removeChild(s);
+    if (onError) onError();
+  }, 10000);
+  window[cbName] = function(data) {
+    clearTimeout(timeout);
+    delete window[cbName];
+    if (s.parentNode) s.parentNode.removeChild(s);
+    if (onSuccess) onSuccess(data);
+  };
+  const s = document.createElement('script');
+  s.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + cbName + '&t=' + Date.now();
+  s.onerror = () => { clearTimeout(timeout); delete window[cbName]; if (onError) onError(); };
+  document.head.appendChild(s);
+}
+
+// Form POST via hidden iframe — bypasses CORS, supports large payloads
+function gasFormPost(url, params) {
+  const iframe = document.createElement('iframe');
+  iframe.name = '_gasFrame' + Date.now();
+  iframe.style.display = 'none';
+  document.body.appendChild(iframe);
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = url;
+  form.target = iframe.name;
+  form.style.display = 'none';
+  Object.entries(params).forEach(([k, v]) => {
+    const inp = document.createElement('input');
+    inp.type = 'hidden'; inp.name = k; inp.value = v;
+    form.appendChild(inp);
+  });
+  document.body.appendChild(form);
+  form.submit();
+  setTimeout(() => {
+    if (form.parentNode) form.parentNode.removeChild(form);
+    if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+  }, 5000);
+}
 
 function showSubmitLoading(msg, sub) {
   const el = document.getElementById('submit-loading');
