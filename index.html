@@ -809,11 +809,14 @@ function saveProjects(arr, changedId) {
   localStorage.setItem(PROJ_KEY, JSON.stringify(arr));
   const url = getGasUrl();
   if (!url) return;
-  // ส่งเฉพาะโครงการที่เปลี่ยน/ใหม่ ผ่าน POST (รองรับ URL ยาว)
   const targetId = changedId || arr[arr.length-1].id;
   const changed = arr.find(p => p.id === targetId);
   if (changed) {
-    gasFormPost(url, { action: 'updateProject', project: JSON.stringify(changed) });
+    const encoded = encodeURIComponent(JSON.stringify(changed));
+    gasJsonp(url + '?action=updateProject&project=' + encoded,
+      function(d){ if(d&&d.status==='error') console.warn('updateProject error:', d.message); },
+      function(){ console.warn('updateProject failed, retrying...'); }
+    );
   }
 }
 function getStatus(p) {
@@ -1909,13 +1912,15 @@ function executeBulkDuplicate() {
   const updated = [...ps, ...newProjects];
   _cloudProjects = updated;
   localStorage.setItem(PROJ_KEY, JSON.stringify(updated));
-  // ส่งทีละโครงการผ่าน POST
+  // ส่งทีละโครงการผ่าน JSONP GET
   const url = getGasUrl();
   if (url) {
     newProjects.forEach(function(p, i) {
       setTimeout(function() {
-        gasFormPost(url, { action: 'updateProject', project: JSON.stringify(p) });
-      }, i * 300);
+        const encoded = encodeURIComponent(JSON.stringify(p));
+        gasJsonp(url + '?action=updateProject&project=' + encoded,
+          function(){}, function(){ console.warn('bulk updateProject failed:', p.code); });
+      }, i * 500);
     });
   }
   renderProjectsTable();
