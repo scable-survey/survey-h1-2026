@@ -214,6 +214,12 @@ input:checked+.slider-sw:before{transform:translateX(20px)}
 .empty-state{text-align:center;padding:60px 20px;color:var(--gray-400)}
 .empty-state .icon{font-size:48px;margin-bottom:12px}
 .search-row{display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+.bulk-row{display:grid;grid-template-columns:40px 1fr 160px 1fr auto;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--gray-100);}
+.bulk-row:hover{background:var(--gray-50)}
+.bulk-row input{padding:6px 10px;border:1.5px solid var(--gray-200);border-radius:6px;font-family:inherit;font-size:13px;outline:none;width:100%}
+.bulk-row input:focus{border-color:var(--primary)}
+.bulk-row input.error{border-color:var(--danger);background:#fff5f5}
+.bulk-url-preview{font-size:11px;color:var(--primary);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* Language Toggle */
 .lang-toggle{position:fixed;top:14px;right:20px;z-index:200;display:flex;gap:4px;background:rgba(255,255,255,0.15);border-radius:99px;padding:3px;backdrop-filter:blur(8px)}
 .lang-btn{padding:5px 14px;border-radius:99px;border:none;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;transition:all 0.2s;background:transparent;color:rgba(255,255,255,0.75)}
@@ -292,6 +298,8 @@ input:checked+.slider-sw:before{transform:translateX(20px)}
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
             <button class="btn btn-primary" onclick="openProjectModal(null)">+ สร้างโครงการใหม่</button>
             <button class="btn" style="background:#fffbeb;color:#92400e;border:1.5px solid #fcd34d;" onclick="openDupFromMasterModal()">⭐ Duplicate จาก Master</button>
+          <button class="btn" style="background:#f0fdf4;color:#166534;border:1.5px solid #bbf7d0;" onclick="openBulkDupModal()">📋 Bulk Duplicate</button>
+          <button class="btn" style="background:#eff6ff;color:#1e40af;border:1.5px solid #bfdbfe;" onclick="exportProjectList()">📥 Export รายการโครงการ</button>
           </div>
         </div>
         <div class="search-row">
@@ -523,6 +531,68 @@ input:checked+.slider-sw:before{transform:translateX(20px)}
       <div class="form-group" style="margin-top:12px;"><label class="form-label">Web App URL</label><input type="text" id="gm-url" class="form-control" placeholder="https://script.google.com/macros/s/..."></div>
       <div style="display:flex;gap:8px;"><button class="btn btn-primary" onclick="saveGasFromModal()">บันทึก</button><button class="btn btn-secondary" onclick="testGas()">ทดสอบ</button></div>
       <div id="gm-result" style="margin-top:12px;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- BULK DUPLICATE MODAL -->
+<div id="bulk-dup-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeModal('bulk-dup-modal')">
+  <div class="modal" style="max-width:860px;">
+    <div class="modal-header">
+      <h3 style="font-size:17px;font-weight:700;">📋 Bulk Duplicate — สร้างหลายโครงการพร้อมกัน</h3>
+      <button class="modal-close" onclick="closeModal('bulk-dup-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <!-- Source -->
+      <div style="background:var(--gray-50);border:1.5px solid var(--gray-200);border-radius:10px;padding:14px;margin-bottom:16px;">
+        <div style="font-size:12px;color:var(--gray-500);margin-bottom:6px;">Master Template ที่เลือก</div>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+          <select class="form-control" id="bulk-master-sel" style="max-width:320px;" onchange="onBulkMasterChange(this.value)">
+            <option value="">— เลือก Master Template —</option>
+          </select>
+          <div id="bulk-master-info" style="font-size:13px;color:var(--gray-500);"></div>
+        </div>
+      </div>
+
+      <!-- Copy options -->
+      <div style="background:var(--primary-light);border-radius:8px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+        <div style="font-size:13px;font-weight:600;color:var(--primary);">ตั้งค่าร่วม:</div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <label style="font-size:13px;">วันเปิดรับ:</label>
+          <input type="datetime-local" id="bulk-date-open" class="form-control" style="width:200px;">
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <label style="font-size:13px;">วันปิดรับ:</label>
+          <input type="datetime-local" id="bulk-date-close" class="form-control" style="width:200px;">
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+          <input type="checkbox" id="bulk-apply-dates" checked> ใช้วันเดียวกันทุกโครงการ
+        </label>
+      </div>
+
+      <!-- Projects list -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+        <div style="font-size:14px;font-weight:700;color:var(--gray-700);">รายการโครงการ <span id="bulk-count" style="color:var(--primary);">(0 โครงการ)</span></div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-sm btn-secondary" onclick="addBulkRow()">+ เพิ่มโครงการ</button>
+          <button class="btn btn-sm btn-secondary" onclick="addBulkRows(5)">+ เพิ่ม 5 โครงการ</button>
+          <button class="btn btn-sm btn-secondary" onclick="addBulkRows(10)">+ เพิ่ม 10 โครงการ</button>
+        </div>
+      </div>
+
+      <div style="background:var(--gray-50);border-radius:8px;border:1.5px solid var(--gray-200);overflow:hidden;">
+        <div style="display:grid;grid-template-columns:40px 1fr 160px 1fr auto;gap:0;background:var(--gray-100);padding:8px 12px;font-size:12px;font-weight:700;color:var(--gray-600);">
+          <div>#</div><div>ชื่อโครงการ *</div><div>รหัสย่อ *</div><div>URL Preview</div><div></div>
+        </div>
+        <div id="bulk-rows" style="max-height:380px;overflow-y:auto;"></div>
+      </div>
+
+      <div id="bulk-error" class="alert alert-danger" style="display:none;margin-top:12px;"></div>
+    </div>
+    <div class="modal-footer">
+      <div style="flex:1;font-size:13px;color:var(--gray-500);" id="bulk-footer-info"></div>
+      <button class="btn btn-secondary" onclick="closeModal('bulk-dup-modal')">ยกเลิก</button>
+      <button class="btn btn-primary" onclick="executeBulkDuplicate()">📋 สร้างโครงการทั้งหมด</button>
     </div>
   </div>
 </div>
@@ -1542,6 +1612,245 @@ function openDupFromMasterModal(){
 // ============================================================
 // UTILS
 // ============================================================
+// ============================================================
+// BULK DUPLICATE
+// ============================================================
+let _bulkRows = [];
+let _bulkMasterId = '';
+
+function openBulkDupModal() {
+  const ps = getProjects();
+  const masters = ps.filter(p => p.isMaster);
+  const sel = document.getElementById('bulk-master-sel');
+  sel.innerHTML = '<option value="">— เลือก Master Template —</option>' +
+    ps.map(p => `<option value="${p.id}">${p.name} (${p.code})${p.isMaster?' ⭐':''}</option>`).join('');
+  // Auto-select first master
+  if (masters.length > 0) {
+    sel.value = masters[0].id;
+    _bulkMasterId = masters[0].id;
+    onBulkMasterChange(masters[0].id);
+  } else {
+    _bulkMasterId = '';
+    document.getElementById('bulk-master-info').textContent = '';
+  }
+  _bulkRows = [];
+  document.getElementById('bulk-rows').innerHTML = '';
+  document.getElementById('bulk-count').textContent = '(0 โครงการ)';
+  document.getElementById('bulk-error').style.display = 'none';
+  document.getElementById('bulk-footer-info').textContent = '';
+  document.getElementById('bulk-date-open').value = '';
+  document.getElementById('bulk-date-close').value = '';
+  // Add 3 rows เริ่มต้น
+  addBulkRows(3);
+  document.getElementById('bulk-dup-modal').style.display = 'flex';
+}
+
+function onBulkMasterChange(id) {
+  _bulkMasterId = id;
+  const ps = getProjects();
+  const master = ps.find(p => p.id === id);
+  const info = document.getElementById('bulk-master-info');
+  if (master) {
+    info.innerHTML = `<span class="badge badge-info">${master.code}</span> <span style="color:var(--gray-600)">${(master.questions||[]).length} คำถาม${master.surveyHeaderEn?' • มี EN':''}</span>`;
+  } else {
+    info.textContent = '';
+  }
+}
+
+function addBulkRow() {
+  const idx = _bulkRows.length;
+  _bulkRows.push({ name: '', code: '' });
+  renderBulkRows();
+  // Focus on new row name input
+  setTimeout(() => {
+    const input = document.getElementById('bulk-name-' + idx);
+    if (input) input.focus();
+  }, 50);
+}
+
+function addBulkRows(n) {
+  for (let i = 0; i < n; i++) _bulkRows.push({ name: '', code: '' });
+  renderBulkRows();
+}
+
+function removeBulkRow(idx) {
+  _bulkRows.splice(idx, 1);
+  renderBulkRows();
+}
+
+function updateBulkRow(idx, field, value) {
+  if (_bulkRows[idx]) {
+    _bulkRows[idx][field] = field === 'code' ? value.toUpperCase().replace(/[^A-Z0-9]/g, '') : value;
+    // Update URL preview
+    const preview = document.getElementById('bulk-url-' + idx);
+    if (preview) {
+      const code = field === 'code' ? _bulkRows[idx].code : _bulkRows[idx].code;
+      preview.textContent = code ? '/survey2026/h1_' + code : '—';
+    }
+    // Update code input (force uppercase)
+    if (field === 'code') {
+      const input = document.getElementById('bulk-code-' + idx);
+      if (input) input.value = _bulkRows[idx].code;
+    }
+    updateBulkCount();
+  }
+}
+
+function updateBulkCount() {
+  const filled = _bulkRows.filter(r => r.name.trim() && r.code.trim()).length;
+  document.getElementById('bulk-count').textContent = `(${_bulkRows.length} แถว / ${filled} พร้อมสร้าง)`;
+}
+
+function renderBulkRows() {
+  const container = document.getElementById('bulk-rows');
+  if (!_bulkRows.length) {
+    container.innerHTML = '<div style="text-align:center;padding:24px;color:var(--gray-400);">กดปุ่ม + เพิ่มโครงการ ด้านบน</div>';
+    updateBulkCount();
+    return;
+  }
+  container.innerHTML = _bulkRows.map((row, i) => `
+    <div class="bulk-row" id="bulk-row-${i}">
+      <div style="font-size:13px;color:var(--gray-400);text-align:center;">${i+1}</div>
+      <div><input id="bulk-name-${i}" value="${(row.name||'').replace(/"/g,'&quot;')}" placeholder="ชื่อโครงการ *"
+        oninput="updateBulkRow(${i},'name',this.value)"></div>
+      <div><input id="bulk-code-${i}" value="${row.code||''}" placeholder="รหัสย่อ *" maxlength="10"
+        oninput="updateBulkRow(${i},'code',this.value)" style="text-transform:uppercase;letter-spacing:1px;"></div>
+      <div class="bulk-url-preview" id="bulk-url-${i}">${row.code?'/survey2026/h1_'+row.code:'—'}</div>
+      <div><button class="btn btn-sm btn-danger" onclick="removeBulkRow(${i})" style="padding:4px 8px;">✕</button></div>
+    </div>`).join('');
+  updateBulkCount();
+}
+
+function executeBulkDuplicate() {
+  const errEl = document.getElementById('bulk-error');
+  errEl.style.display = 'none';
+
+  if (!_bulkMasterId) { errEl.style.display='flex'; errEl.textContent='กรุณาเลือก Master Template ก่อน'; return; }
+
+  const ps = getProjects();
+  const master = ps.find(p => p.id === _bulkMasterId);
+  if (!master) { errEl.style.display='flex'; errEl.textContent='ไม่พบ Master Template'; return; }
+
+  // Filter rows ที่มีข้อมูลครบ
+  const validRows = _bulkRows.filter(r => r.name.trim() && r.code.trim());
+  if (!validRows.length) { errEl.style.display='flex'; errEl.textContent='กรุณากรอกชื่อและรหัสย่ออย่างน้อย 1 โครงการ'; return; }
+
+  // Validate
+  const existingCodes = ps.map(p => p.code);
+  const newCodes = [];
+  for (let i = 0; i < validRows.length; i++) {
+    const row = validRows[i];
+    if (!/^[A-Z0-9]+$/.test(row.code)) {
+      errEl.style.display='flex'; errEl.textContent=`แถว ${i+1}: รหัสย่อ "${row.code}" ใช้ได้เฉพาะ A-Z และ 0-9`; return;
+    }
+    if (existingCodes.includes(row.code) || newCodes.includes(row.code)) {
+      errEl.style.display='flex'; errEl.textContent=`แถว ${i+1}: รหัสย่อ "${row.code}" ถูกใช้แล้ว`; return;
+    }
+    newCodes.push(row.code);
+  }
+
+  const dateOpen = document.getElementById('bulk-date-open').value;
+  const dateClose = document.getElementById('bulk-date-close').value;
+  const applyDates = document.getElementById('bulk-apply-dates').checked;
+
+  // Clone questions
+  const cloneQ = (q, suffix) => ({
+    ...q,
+    id: 'q'+Date.now()+Math.random().toString(36).substr(2,4)+suffix,
+    options: q.options ? [...q.options] : [],
+    optionsEn: q.optionsEn ? [...q.optionsEn] : [],
+    text: q.text||'', textEn: q.textEn||'',
+    minLabelEn: q.minLabelEn||'', maxLabelEn: q.maxLabelEn||''
+  });
+
+  // Create projects
+  const newProjects = validRows.map((row, i) => ({
+    id: 'p' + Date.now() + i + Math.random().toString(36).substr(2,4),
+    name: row.name.trim(),
+    code: row.code.trim(),
+    surveyHeader: master.surveyHeader || master.name,
+    surveyHeaderEn: master.surveyHeaderEn || '',
+    surveyDesc: master.surveyDesc || '',
+    surveyDescEn: master.surveyDescEn || '',
+    thankMsg: master.thankMsg || 'ข้อมูลของท่านได้รับการบันทึกเรียบร้อยแล้ว',
+    thankMsgEn: master.thankMsgEn || '',
+    dateOpen: applyDates ? dateOpen : '',
+    dateClose: applyDates ? dateClose : '',
+    deviceLock: master.deviceLock !== false,
+    questions: (master.questions||[]).map((q,qi) => cloneQ(q, i+'_'+qi)),
+    isMaster: false,
+    duplicatedFrom: master.code,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  }));
+
+  // Save all at once
+  const updated = [...ps, ...newProjects];
+  saveProjects(updated);
+  renderProjectsTable();
+  closeModal('bulk-dup-modal');
+  showToast(`✅ สร้าง ${newProjects.length} โครงการสำเร็จ!`);
+}
+
+// ============================================================
+// EXPORT PROJECT LIST + URLs
+// ============================================================
+function exportProjectList() {
+  const ps = getProjects();
+  if (!ps.length) { showToast('ไม่มีโครงการให้ Export'); return; }
+
+  const origin = window.location.origin + window.location.pathname;
+  const bom = '﻿';
+
+  // CSV Headers
+  const headers = [
+    '#',
+    'ชื่อโครงการ',
+    'รหัสย่อ',
+    'URL ลูกบ้าน (Full)',
+    'URL ลูกบ้าน (Path)',
+    'จำนวนคำถาม',
+    'สถานะ',
+    'วันที่เปิดรับ',
+    'วันที่ปิดรับ',
+    'Device Lock',
+    'Master Template',
+    'Duplicated From',
+    'สร้างเมื่อ',
+    'อัปเดตล่าสุด'
+  ];
+
+  const rows = ps.map((p, i) => {
+    const st = getStatus(p);
+    const fullUrl = origin + '#/survey2026/h1_' + p.code;
+    const pathUrl = '/survey2026/h1_' + p.code;
+    return [
+      i + 1,
+      '"' + (p.name||'').replace(/"/g, '""') + '"',
+      p.code || '',
+      '"' + fullUrl + '"',
+      pathUrl,
+      (p.questions||[]).length,
+      st.label,
+      p.dateOpen ? fmtDate(p.dateOpen) : '',
+      p.dateClose ? fmtDate(p.dateClose) : '',
+      p.deviceLock !== false ? 'เปิด' : 'ปิด',
+      p.isMaster ? '⭐ ใช่' : 'ไม่ใช่',
+      '"' + (p.duplicatedFrom||'').replace(/"/g,'""') + '"',
+      p.createdAt ? fmtDate(p.createdAt) : '',
+      p.updatedAt ? fmtDate(p.updatedAt) : ''
+    ].join(',');
+  });
+
+  const csv = bom + [headers.join(','), ...rows].join('
+');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8;'}));
+  a.download = 'projects_urls_' + new Date().toISOString().split('T')[0] + '.csv';
+  a.click();
+  showToast('📥 Export รายการโครงการแล้ว (' + ps.length + ' โครงการ)');
+}
+
 function getDevId(){let id=localStorage.getItem('_h1_dev');if(!id){id='d'+Date.now()+Math.random().toString(36).substr(2,8);localStorage.setItem('_h1_dev',id);}return id;}
 function fmtDate(dt){if(!dt)return'';try{return new Date(dt).toLocaleString('th-TH',{year:'2-digit',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});}catch(e){return dt;}}
 function copyText(txt){navigator.clipboard?.writeText(txt).then(()=>showToast('คัดลอกแล้ว!')).catch(()=>fallbackCopy(txt))||fallbackCopy(txt);}
