@@ -1402,9 +1402,18 @@ function loadResponsesView(pid){
         const rs=rows.slice(1).map(function(row){
           const ans={};
           if(p&&p.questions){
-            p.questions.filter(q=>q.type!=='heading').forEach(function(q,qi){
-              const colIdx=5+(qi*2);
-              ans[q.id]={question:q.text.replace(/<[^>]*>/g,''),type:q.type,answer:row[colIdx]||'',reason:q.hasReason?(row[colIdx+1]||''):undefined};
+            var colIdx=7; // เริ่มที่ column 7 (หลัง id,name,code,date,deviceId,IP,หมายเหตุ)
+            p.questions.filter(q=>q.type!=='heading').forEach(function(q){
+              ans[q.id]={
+                question:q.text.replace(/<[^>]*>/g,''),
+                type:q.type,
+                answer:row[colIdx]||''
+              };
+              colIdx++; // แต่ละคำถามใช้ 1 column
+              if(q.hasReason){
+                ans[q.id].reason=row[colIdx]||'';
+                colIdx++; // ถ้ามี reason ใช้อีก 1 column
+              }
             });
           }
           return {id:row[0],projectName:row[1],projectCode:row[2],submittedAt:row[3],deviceId:row[4],answers:ans};
