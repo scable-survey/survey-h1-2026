@@ -1993,7 +1993,7 @@ function gasJsonp(url, onSuccess, onError) {
     delete window[cbName];
     if (s.parentNode) s.parentNode.removeChild(s);
     if (onError) onError();
-  }, 10000);
+  }, 30000);
   window[cbName] = function(data) {
     clearTimeout(timeout);
     delete window[cbName];
