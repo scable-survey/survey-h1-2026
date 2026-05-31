@@ -857,23 +857,24 @@ function toggleDevLock(id,val) { const ps=getProjects(),idx=ps.findIndex(p=>p.id
 function resetDevLock(id) {
   if(!confirm('ปลดล็อค Device ทั้งหมดสำหรับโครงการนี้?')) return;
 
-  // 1. Clear localStorage เฉพาะ device ของโครงการนี้
+  // 1. Clear localStorage เฉพาะ device key ของโครงการนี้เท่านั้น
   localStorage.removeItem(DEV_PREFIX+id);
 
-  // 2. Reset GAS _DEVICES sheet — ใช้ script tag แบบไม่รอ callback
-  //    เพื่อไม่ให้กระทบ _cloudProjects
+  // 2. Reset GAS _DEVICES sheet
+  //    ใช้ Image() trick — ส่ง GET request แบบ fire-and-forget
+  //    ไม่มี JS execution ไม่มี callback ไม่กระทบ _cloudProjects เลย
   const url = getGasUrl();
   if (url) {
-    const s = document.createElement('script');
-    s.src = url + '?action=resetDevices&projectId=' + encodeURIComponent(id) + '&t=' + Date.now();
-    s.onload = function() { if(s.parentNode) s.parentNode.removeChild(s); };
-    s.onerror = function() { if(s.parentNode) s.parentNode.removeChild(s); };
-    document.head.appendChild(s);
+    const img = new Image();
+    img.src = url + '?action=resetDevices&projectId=' + encodeURIComponent(id) + '&t=' + Date.now();
   }
 
-  // 3. แสดงผลทันที — ไม่ reload projects
+  // 3. แสดง toast เท่านั้น — ไม่ renderProjectsTable ไม่ reload
   showToast('✅ ปลดล็อค Device เรียบร้อย');
-  renderProjectsTable();
+
+  // 4. อัปเดตเฉพาะ cell ใน table ที่เกี่ยวข้อง ไม่ render ทั้งหมด
+  const devEl = document.querySelector('[data-dev-id="' + id + '"]');
+  if (devEl) devEl.textContent = '0 เครื่อง';
 }
 function deleteProject(id) {
   if(!confirm('ลบโครงการนี้? ข้อมูลการตอบทั้งหมดจะหายด้วย')) return;
