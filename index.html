@@ -856,16 +856,24 @@ function renderProjectsTable() {
 function toggleDevLock(id,val) { const ps=getProjects(),idx=ps.findIndex(p=>p.id===id); if(idx>-1){ps[idx].deviceLock=val;saveProjects(ps);renderProjectsTable();} }
 function resetDevLock(id) {
   if(!confirm('ปลดล็อค Device ทั้งหมดสำหรับโครงการนี้?')) return;
-  // Clear localStorage
+
+  // 1. Clear localStorage เฉพาะ device ของโครงการนี้
   localStorage.removeItem(DEV_PREFIX+id);
-  // Reset cloud _DEVICES sheet
-  const url=getGasUrl();
-  if(url){
-    gasJsonp(url+'?action=resetDevices&projectId='+encodeURIComponent(id), function(){}, function(){});
+
+  // 2. Reset GAS _DEVICES sheet — ใช้ script tag แบบไม่รอ callback
+  //    เพื่อไม่ให้กระทบ _cloudProjects
+  const url = getGasUrl();
+  if (url) {
+    const s = document.createElement('script');
+    s.src = url + '?action=resetDevices&projectId=' + encodeURIComponent(id) + '&t=' + Date.now();
+    s.onload = function() { if(s.parentNode) s.parentNode.removeChild(s); };
+    s.onerror = function() { if(s.parentNode) s.parentNode.removeChild(s); };
+    document.head.appendChild(s);
   }
-  // ไม่ได้ปิด deviceLock — แค่ปลดล็อคคนที่ทำไปแล้ว ยังล็อคต่อไป
+
+  // 3. แสดงผลทันที — ไม่ reload projects
+  showToast('✅ ปลดล็อค Device เรียบร้อย');
   renderProjectsTable();
-  showToast('ปลดล็อค Device เรียบร้อย');
 }
 function deleteProject(id) {
   if(!confirm('ลบโครงการนี้? ข้อมูลการตอบทั้งหมดจะหายด้วย')) return;
@@ -1433,7 +1441,7 @@ function loadResponsesView(pid){
         ${reasons.length?`<div style="margin-top:10px;border-top:1px solid var(--gray-100);padding-top:10px;"><div style="font-size:12px;font-weight:600;color:var(--gray-500);margin-bottom:6px;">ข้อเสนอแนะ/เหตุผล:</div>${reasons.map(c=>`<div style="padding:6px 10px;background:var(--gray-50);border-radius:6px;margin-bottom:4px;font-size:13px;">${c}</div>`).join('')}</div>`:''}
       </div>`;
     } else if(q.type==='radio'||q.type==='checkbox'){
-      const allA=rs.flatMap(r=>((r.answers[q.id]||{}).answer||'').split(', ').filter(Boolean));
+      const allA=rs.flatMap(r=>{const a=(r.answers[q.id]||{}).answer||'';return (typeof a==='string'?a:String(a)).split(', ').filter(Boolean);});
       const dist={};(q.options||[]).forEach(o=>dist[o]=0);allA.forEach(a=>{if(dist[a]!==undefined)dist[a]++;});
       statsHtml+=`<div class="card"><div class="card-title" style="margin-bottom:12px;">${qLabel}</div>
         ${Object.entries(dist).map(([k,v])=>`<div class="response-count-bar"><span class="label">${k}</span><div class="bar"><div class="bar-fill" style="width:${total?Math.round(v/total*100):0}%"></div></div><span class="count">${v} (${total?Math.round(v/total*100):0}%)</span></div>`).join('')}
@@ -1479,7 +1487,7 @@ function renderResponsesView(container, p, rs, pid) {
         ${reasons.length?`<div style="margin-top:10px;border-top:1px solid var(--gray-100);padding-top:10px;"><div style="font-size:12px;font-weight:600;color:var(--gray-500);margin-bottom:6px;">ข้อเสนอแนะ:</div>${reasons.map(c=>`<div style="padding:6px 10px;background:var(--gray-50);border-radius:6px;margin-bottom:4px;font-size:13px;">${c}</div>`).join('')}</div>`:''}
       </div>`;
     } else if(q.type==='radio'||q.type==='checkbox'){
-      const allA=rs.flatMap(r=>((r.answers[q.id]||{}).answer||'').split(', ').filter(Boolean));
+      const allA=rs.flatMap(r=>{const a=(r.answers[q.id]||{}).answer||'';return (typeof a==='string'?a:String(a)).split(', ').filter(Boolean);});
       const dist={};(q.options||[]).forEach(o=>dist[o]=0);allA.forEach(a=>{if(dist[a]!==undefined)dist[a]++;});
       statsHtml+=`<div class="card"><div class="card-title" style="margin-bottom:12px;">${qLabel}</div>
         ${Object.entries(dist).map(([k,v])=>`<div class="response-count-bar"><span class="label">${k}</span><div class="bar"><div class="bar-fill" style="width:${total?Math.round(v/total*100):0}%"></div></div><span class="count">${v} (${total?Math.round(v/total*100):0}%)</span></div>`).join('')}
