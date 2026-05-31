@@ -214,6 +214,11 @@ input:checked+.slider-sw:before{transform:translateX(20px)}
 .empty-state{text-align:center;padding:60px 20px;color:var(--gray-400)}
 .empty-state .icon{font-size:48px;margin-bottom:12px}
 .search-row{display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+/* Language Toggle */
+.lang-toggle{position:fixed;top:14px;right:20px;z-index:200;display:flex;gap:4px;background:rgba(255,255,255,0.15);border-radius:99px;padding:3px;backdrop-filter:blur(8px)}
+.lang-btn{padding:5px 14px;border-radius:99px;border:none;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;transition:all 0.2s;background:transparent;color:rgba(255,255,255,0.75)}
+.lang-btn.active{background:white;color:var(--primary);box-shadow:0 1px 4px rgba(0,0,0,0.15)}
+.lang-btn:hover:not(.active){color:white;background:rgba(255,255,255,0.2)}
 
 @media(max-width:640px){
   .form-row{grid-template-columns:1fr}
@@ -356,6 +361,12 @@ input:checked+.slider-sw:before{transform:translateX(20px)}
         <h2 id="sv-error-title" style="font-size:20px;margin-bottom:8px;color:var(--gray-800);"></h2>
         <p id="sv-error-msg" style="color:var(--gray-500);font-size:14px;"></p>
       </div>
+      <!-- Language Toggle -->
+      <div id="lang-toggle" class="lang-toggle" style="display:none;">
+        <button class="lang-btn active" id="lang-th" onclick="switchLang('th')">🇹🇭 TH</button>
+        <button class="lang-btn" id="lang-en" onclick="switchLang('en')">🇬🇧 EN</button>
+      </div>
+
       <div id="sv-content" style="display:none;">
         <div class="survey-header-blk">
           <div style="font-size:12px;opacity:0.6;margin-bottom:8px;font-weight:500;letter-spacing:0.5px;" id="sv-proj-label"></div>
@@ -432,15 +443,25 @@ input:checked+.slider-sw:before{transform:translateX(20px)}
             <div style="font-size:12px;color:var(--gray-500);">Admin ปลดล็อคได้จากหน้าโครงการ</div>
           </div>
         </div>
-        <div class="form-group">
-          <label class="form-label">ข้อความแสดงหลังส่งแบบสอบถาม (รองรับ ตัวหนา ตัวเอียง ขีดเส้นใต้ และ Enter)</label>
+        <div style="background:var(--gray-50);border-radius:8px;padding:14px;margin-bottom:8px;border:1.5px solid var(--gray-200);">
+          <div style="font-size:12px;font-weight:700;color:var(--gray-500);margin-bottom:10px;">🇹🇭 ข้อความขอบคุณ (ภาษาไทย)</div>
           <div class="rich-toolbar">
-            <button type="button" onclick="richCmd('thanks-editor','bold')" title="ตัวหนา"><b>B</b></button>
-            <button type="button" onclick="richCmd('thanks-editor','italic')" title="ตัวเอียง"><i>I</i></button>
-            <button type="button" onclick="richCmd('thanks-editor','underline')" title="ขีดเส้นใต้"><u>U</u></button>
+            <button type="button" onclick="richCmd('thanks-editor','bold')"><b>B</b></button>
+            <button type="button" onclick="richCmd('thanks-editor','italic')"><i>I</i></button>
+            <button type="button" onclick="richCmd('thanks-editor','underline')"><u>U</u></button>
           </div>
-          <div id="thanks-editor" class="rich-editor" contenteditable="true" data-placeholder="ข้อความขอบคุณ..." oninput="syncRich('thanks-editor','pm-thanks-val')"></div>
+          <div id="thanks-editor" class="rich-editor" contenteditable="true" data-placeholder="ข้อความขอบคุณภาษาไทย..." oninput="syncRich('thanks-editor','pm-thanks-val')"></div>
           <input type="hidden" id="pm-thanks-val">
+        </div>
+        <div style="background:#f0fdf4;border-radius:8px;padding:14px;border:1.5px solid #bbf7d0;">
+          <div style="font-size:12px;font-weight:700;color:#166534;margin-bottom:10px;">🇬🇧 Thank You Message (English)</div>
+          <div class="rich-toolbar">
+            <button type="button" onclick="richCmd('thanks-editor-en','bold')"><b>B</b></button>
+            <button type="button" onclick="richCmd('thanks-editor-en','italic')"><i>I</i></button>
+            <button type="button" onclick="richCmd('thanks-editor-en','underline')"><u>U</u></button>
+          </div>
+          <div id="thanks-editor-en" class="rich-editor" contenteditable="true" data-placeholder="Thank you message in English..." oninput="syncRich('thanks-editor-en','pm-thanks-val-en')" style="min-height:60px;"></div>
+          <input type="hidden" id="pm-thanks-val-en">
         </div>
       </div>
 
@@ -542,7 +563,7 @@ const CREDS_KEY='h1_admin_creds', GAS_KEY='h1_gas_url', PROJ_KEY='h1_projects_v2
 const RESP_PREFIX='h1_resp_', DEV_PREFIX='h1_dev_';
 // GAS URL hardcoded — ใช้ได้ทุกเครื่องโดยไม่ต้องตั้งค่า
 const GAS_URL_DEFAULT = 'https://script.google.com/macros/s/AKfycbwYb_NxFA4LbNNqvasBjkDJ5tu3iDQ4rsnLk3Tx67DiWyVmC_5fcD_bDiofk2IQGADbQw/exec';
-let currentQs=[], filterStatus='', filterQuery='', activeSurveyProject=null, _dupSourceId=null, _cloudRespCounts={}, _cloudDevCounts={};
+let currentQs=[], filterStatus='', filterQuery='', activeSurveyProject=null, _dupSourceId=null, _cloudRespCounts={}, _cloudDevCounts={}, currentLang='th';
 let _gasUrl='', _cloudProjects=[], _cloudDevices={}, _isSyncing=false;
 
 // ============================================================
@@ -745,6 +766,21 @@ function syncQText(idx) {
   const el = document.getElementById('qt_'+idx);
   if (el) currentQs[idx].text = el.innerHTML;
 }
+function syncQTextEn(idx) {
+  const el = document.getElementById('qt_en_'+idx);
+  if (el) currentQs[idx].textEn = el.innerHTML;
+}
+function qRichCmdEn(idx, cmd) {
+  const el = document.getElementById('qt_en_'+idx);
+  if (!el) return;
+  el.focus();
+  document.execCommand(cmd, false, null);
+  currentQs[idx].textEn = el.innerHTML;
+}
+function updOptEn(qi, oi, v) {
+  if (!currentQs[qi].optionsEn) currentQs[qi].optionsEn = [];
+  currentQs[qi].optionsEn[oi] = v;
+}
 
 // ============================================================
 // PROJECT MODAL
@@ -759,19 +795,26 @@ function openProjectModal(id) {
     document.getElementById('pm-name').value = p.name||'';
     document.getElementById('pm-code').value = p.code||'';
     document.getElementById('pm-header').value = p.surveyHeader||'';
+    document.getElementById('pm-header-en').value = p.surveyHeaderEn||'';
     setRichContent('desc-editor', p.surveyDesc||'');
     document.getElementById('pm-desc-val').value = p.surveyDesc||'';
+    setRichContent('desc-editor-en', p.surveyDescEn||'');
+    document.getElementById('pm-desc-val-en').value = p.surveyDescEn||'';
     document.getElementById('pm-open').value = p.dateOpen||'';
     document.getElementById('pm-close').value = p.dateClose||'';
     document.getElementById('pm-devlock').checked = p.deviceLock!==false;
     setRichContent('thanks-editor', p.thankMsg||'ข้อมูลของท่านได้รับการบันทึกเรียบร้อยแล้ว');
     document.getElementById('pm-thanks-val').value = p.thankMsg||'';
-    currentQs = (p.questions||[]).map(q=>({...q, options:q.options?[...q.options]:[]}));
+    setRichContent('thanks-editor-en', p.thankMsgEn||'');
+    document.getElementById('pm-thanks-val-en').value = p.thankMsgEn||'';
+    currentQs = (p.questions||[]).map(q=>({...q, options:q.options?[...q.options]:[], optionsEn:q.optionsEn?[...q.optionsEn]:[]}));
   } else {
-    ['pm-name','pm-code','pm-header','pm-open','pm-close'].forEach(i=>document.getElementById(i).value='');
+    ['pm-name','pm-code','pm-header','pm-header-en','pm-open','pm-close'].forEach(i=>document.getElementById(i).value='');
     setRichContent('desc-editor',''); document.getElementById('pm-desc-val').value='';
+    setRichContent('desc-editor-en',''); document.getElementById('pm-desc-val-en').value='';
     setRichContent('thanks-editor','ข้อมูลของท่านได้รับการบันทึกเรียบร้อยแล้ว');
     document.getElementById('pm-thanks-val').value='ข้อมูลของท่านได้รับการบันทึกเรียบร้อยแล้ว';
+    setRichContent('thanks-editor-en',''); document.getElementById('pm-thanks-val-en').value='';
     document.getElementById('pm-devlock').checked=true;
   }
   updateProjUrl(); renderQBuilder();
@@ -787,11 +830,14 @@ function saveProject() {
   const name=document.getElementById('pm-name').value.trim();
   const code=document.getElementById('pm-code').value.trim().toUpperCase();
   const surveyHeader=document.getElementById('pm-header').value.trim();
+  const surveyHeaderEn=document.getElementById('pm-header-en').value.trim();
   const surveyDesc=document.getElementById('pm-desc-val').value;
+  const surveyDescEn=document.getElementById('pm-desc-val-en').value;
   const dateOpen=document.getElementById('pm-open').value;
   const dateClose=document.getElementById('pm-close').value;
   const deviceLock=document.getElementById('pm-devlock').checked;
   const thankMsg=document.getElementById('pm-thanks-val').value||'ข้อมูลของท่านได้รับการบันทึกเรียบร้อยแล้ว';
+  const thankMsgEn=document.getElementById('pm-thanks-val-en').value||'';
   if(!name) return alert('กรุณากรอกชื่อโครงการ');
   if(!code) return alert('กรุณากรอกรหัสย่อ');
   if(!/^[A-Z0-9]+$/.test(code)) return alert('รหัสย่อใช้ได้เฉพาะ A-Z และ 0-9');
@@ -800,7 +846,7 @@ function saveProject() {
   const ps=getProjects();
   const dup=ps.find(p=>p.code===code&&p.id!==id);
   if(dup) return alert('รหัสย่อ "'+code+'" ถูกใช้แล้ว: '+dup.name);
-  const obj={id:id||'p'+Date.now(),name,code,surveyHeader,surveyDesc,dateOpen,dateClose,deviceLock,thankMsg,
+  const obj={id:id||'p'+Date.now(),name,code,surveyHeader,surveyHeaderEn,surveyDesc,surveyDescEn,dateOpen,dateClose,deviceLock,thankMsg,thankMsgEn,
     questions:currentQs.map(q=>({...q,options:q.options?[...q.options]:[]})),
     updatedAt:new Date().toISOString(),createdAt:id?(ps.find(p=>p.id===id)||{}).createdAt:new Date().toISOString()};
   if(id){const idx=ps.findIndex(p=>p.id===id);if(idx>-1)ps[idx]=obj;else ps.push(obj);}else ps.push(obj);
@@ -815,9 +861,11 @@ const QTypes={rating:'คะแนน 1-5',radio:'ตัวเลือกเด
 const QCls={rating:'qtype-rating',radio:'qtype-radio',checkbox:'qtype-checkbox',text:'qtype-text',textsm:'qtype-textsm',heading:'qtype-heading',phone:'qtype-phone'};
 
 function addQ(type) {
-  currentQs.push({id:'q'+Date.now()+Math.random().toString(36).substr(2,4),type,text:'',required:type!=='heading',
+  currentQs.push({id:'q'+Date.now()+Math.random().toString(36).substr(2,4),type,text:'',textEn:'',required:type!=='heading',
     options:(type==='radio'||type==='checkbox')?['ตัวเลือก 1','ตัวเลือก 2']:[],
-    maxRating:5,minLabel:'น้อยที่สุด',maxLabel:'มากที่สุด',hasReason:false,hideNumber:false});
+    optionsEn:(type==='radio'||type==='checkbox')?['Option 1','Option 2']:[],
+    maxRating:5,minLabel:'น้อยที่สุด',maxLabel:'มากที่สุด',minLabelEn:'Least',maxLabelEn:'Most',
+    hasReason:false,hideNumber:false});
   renderQBuilder();
   setTimeout(()=>{const el=document.getElementById('q-builder').lastElementChild;if(el)el.scrollIntoView({behavior:'smooth',block:'nearest'});},80);
 }
@@ -836,18 +884,29 @@ function renderQBuilder() {
     const isHeading=q.type==='heading';
     // Question text area with formatting toolbar
     const textArea=`
-      <div class="form-group">
-        <label class="form-label" style="font-size:12px;">${isHeading?'ข้อความหัวข้อ':'คำถาม'} (ปรับสไตล์ได้)</label>
+      <div style="background:var(--gray-50);border-radius:6px;padding:10px;border:1px solid var(--gray-200);margin-bottom:6px;">
+        <div style="font-size:11px;font-weight:700;color:var(--gray-500);margin-bottom:6px;">🇹🇭 ${isHeading?'หัวข้อ':'คำถาม'}ภาษาไทย</div>
         <div class="qtext-toolbar">
-          <button type="button" onclick="qRichCmd(${i},'bold')" title="ตัวหนา"><b>B</b></button>
-          <button type="button" onclick="qRichCmd(${i},'italic')" title="ตัวเอียง"><i>I</i></button>
-          <button type="button" onclick="qRichCmd(${i},'underline')" title="ขีดเส้นใต้"><u>U</u></button>
+          <button type="button" onclick="qRichCmd(${i},'bold')"><b>B</b></button>
+          <button type="button" onclick="qRichCmd(${i},'italic')"><i>I</i></button>
+          <button type="button" onclick="qRichCmd(${i},'underline')"><u>U</u></button>
         </div>
-        <div id="qt_${i}" class="qtext-input" contenteditable="true" data-placeholder="${isHeading?'พิมพ์หัวข้อ/ข้อความ...':'พิมพ์คำถาม...'}" 
-          style="min-height:38px;padding:8px 12px;border:1.5px solid var(--gray-200);border-radius:7px;font-family:inherit;font-size:14px;outline:none;line-height:1.6;"
+        <div id="qt_${i}" class="qtext-input" contenteditable="true" data-placeholder="${isHeading?'พิมพ์หัวข้อ/ข้อความภาษาไทย...':'พิมพ์คำถามภาษาไทย...'}" 
+          style="min-height:38px;padding:8px 12px;border:1.5px solid var(--gray-200);border-radius:7px;font-family:inherit;font-size:14px;outline:none;line-height:1.6;background:white;"
           oninput="syncQText(${i})"
-          onkeydown="if(event.key==='Tab'){event.preventDefault();document.execCommand('insertText',false,'  ');}"
         >${q.text||''}</div>
+      </div>
+      <div style="background:#f0fdf4;border-radius:6px;padding:10px;border:1px solid #bbf7d0;">
+        <div style="font-size:11px;font-weight:700;color:#166534;margin-bottom:6px;">🇬🇧 ${isHeading?'Heading':'Question'} (English — optional)</div>
+        <div class="qtext-toolbar">
+          <button type="button" onclick="qRichCmdEn(${i},'bold')"><b>B</b></button>
+          <button type="button" onclick="qRichCmdEn(${i},'italic')"><i>I</i></button>
+          <button type="button" onclick="qRichCmdEn(${i},'underline')"><u>U</u></button>
+        </div>
+        <div id="qt_en_${i}" class="qtext-input" contenteditable="true" data-placeholder="${isHeading?'Heading in English...':'Question in English...'}" 
+          style="min-height:38px;padding:8px 12px;border:1.5px solid #bbf7d0;border-radius:7px;font-family:inherit;font-size:14px;outline:none;line-height:1.6;background:white;"
+          oninput="syncQTextEn(${i})"
+        >${q.textEn||''}</div>
       </div>`;
 
     let extra='';
@@ -860,13 +919,18 @@ function renderQBuilder() {
         </div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label class="form-label" style="font-size:11px;">ป้ายซ้าย (น้อย)</label><input class="form-control" value="${(q.minLabel||'น้อยที่สุด').replace(/"/g,'&quot;')}" onchange="updQ(${i},'minLabel',this.value)"></div>
-        <div class="form-group"><label class="form-label" style="font-size:11px;">ป้ายขวา (มาก)</label><input class="form-control" value="${(q.maxLabel||'มากที่สุด').replace(/"/g,'&quot;')}" onchange="updQ(${i},'maxLabel',this.value)"></div>
+        <div class="form-group"><label class="form-label" style="font-size:11px;">🇹🇭 ป้ายซ้าย (น้อย)</label><input class="form-control" value="${(q.minLabel||'น้อยที่สุด').replace(/"/g,'&quot;')}" onchange="updQ(${i},'minLabel',this.value)"></div>
+        <div class="form-group"><label class="form-label" style="font-size:11px;">🇹🇭 ป้ายขวา (มาก)</label><input class="form-control" value="${(q.maxLabel||'มากที่สุด').replace(/"/g,'&quot;')}" onchange="updQ(${i},'maxLabel',this.value)"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label" style="font-size:11px;">🇬🇧 Label Left (least)</label><input class="form-control" value="${(q.minLabelEn||'').replace(/"/g,'&quot;')}" placeholder="e.g. Least" onchange="updQ(${i},'minLabelEn',this.value)" style="border-color:#bbf7d0;"></div>
+        <div class="form-group"><label class="form-label" style="font-size:11px;">🇬🇧 Label Right (most)</label><input class="form-control" value="${(q.maxLabelEn||'').replace(/"/g,'&quot;')}" placeholder="e.g. Most" onchange="updQ(${i},'maxLabelEn',this.value)" style="border-color:#bbf7d0;"></div>
       </div>`;
     } else if(q.type==='radio'||q.type==='checkbox'){
       extra=`<div class="option-list">${(q.options||[]).map((opt,oi)=>`
-        <div class="option-row">
-          <input class="form-control" value="${opt.replace(/"/g,'&quot;')}" placeholder="ตัวเลือก ${oi+1}" onchange="updOpt(${i},${oi},this.value)">
+        <div class="option-row" style="gap:6px;">
+          <input class="form-control" value="${opt.replace(/"/g,'&quot;')}" placeholder="🇹🇭 ตัวเลือก ${oi+1}" onchange="updOpt(${i},${oi},this.value)" style="flex:1;">
+          <input class="form-control" value="${((q.optionsEn||[])[oi]||'').replace(/"/g,'&quot;')}" placeholder="🇬🇧 Option ${oi+1}" onchange="updOptEn(${i},${oi},this.value)" style="flex:1;border-color:#bbf7d0;">
           <button class="btn btn-sm btn-danger" onclick="removeOpt(${i},${oi})">✕</button>
         </div>`).join('')}</div>
       <button class="btn btn-sm btn-secondary" style="margin-top:8px;" onclick="addOpt(${i})">+ เพิ่มตัวเลือก</button>`;
@@ -989,13 +1053,43 @@ async function doRenderSurvey(p) {
       }
     }, function(){});
   }
+  currentLang = 'th'; // reset ภาษากลับเป็นไทยทุกครั้งที่เปิด
   document.getElementById('sv-proj-label').textContent=p.name;
   document.getElementById('sv-header').textContent=p.surveyHeader||p.name;
   const descEl=document.getElementById('sv-desc');
   if(p.surveyDesc&&p.surveyDesc.replace(/<[^>]*>/g,'').trim()){descEl.innerHTML=p.surveyDesc;descEl.style.display='block';}else descEl.style.display='none';
+  // แสดงปุ่มสลับภาษา ถ้ามีเนื้อหา EN
+  const hasEn = p.surveyHeaderEn || (p.questions||[]).some(q=>q.textEn);
+  const toggleEl = document.getElementById('lang-toggle');
+  if (toggleEl) {
+    toggleEl.style.display = hasEn ? 'flex' : 'none';
+    document.getElementById('lang-th').classList.add('active');
+    document.getElementById('lang-en').classList.remove('active');
+  }
   renderSvQuestions(p.questions||[]);
   document.getElementById('sv-content').style.display='block';
 }
+// ============================================================
+// LANGUAGE SWITCH
+// ============================================================
+function switchLang(lang) {
+  currentLang = lang;
+  document.getElementById('lang-th').classList.toggle('active', lang==='th');
+  document.getElementById('lang-en').classList.toggle('active', lang==='en');
+  const p = activeSurveyProject;
+  if (!p) return;
+  // อัปเดต Header และ Description
+  const header = lang==='en' && p.surveyHeaderEn ? p.surveyHeaderEn : (p.surveyHeader||p.name);
+  document.getElementById('sv-header').textContent = header;
+  const descEl = document.getElementById('sv-desc');
+  const desc = lang==='en' && p.surveyDescEn ? p.surveyDescEn : p.surveyDesc;
+  if (desc && desc.replace(/<[^>]*>/g,'').trim()) {
+    descEl.innerHTML = desc; descEl.style.display='block';
+  } else { descEl.style.display='none'; }
+  // Re-render คำถาม
+  renderSvQuestions(p.questions||[]);
+}
+
 function showSvError(icon,title,msg){
   document.getElementById('sv-error-icon').textContent=icon;
   document.getElementById('sv-error-title').textContent=title;
@@ -1008,28 +1102,37 @@ function renderSvQuestions(qs) {
   let qNum=0;
   document.getElementById('sv-questions').innerHTML=qs.map((q)=>{
     if(q.type==='heading'){
-      return `<div class="sv-heading-block">${q.text||''}</div>`;
+      const htxt = (currentLang==='en' && q.textEn) ? q.textEn : (q.text||'');
+      return `<div class="sv-heading-block">${htxt}</div>`;
     }
     qNum++;
     const num=qNum;
     let inp='';
     if(q.type==='rating'){
       const max=q.maxRating||5;
+      const minL=(currentLang==='en'&&q.minLabelEn)?q.minLabelEn:(q.minLabel||'น้อยที่สุด');
+      const maxL=(currentLang==='en'&&q.maxLabelEn)?q.maxLabelEn:(q.maxLabel||'มากที่สุด');
       inp=`<div class="rating-row">${Array.from({length:max},(_,k)=>`<button type="button" class="rating-btn" data-q="${q.id}" onclick="selRating('${q.id}',${k+1},this)">${k+1}</button>`).join('')}</div>
-        <div class="rating-labels"><span>${q.minLabel||'น้อยที่สุด'}</span><span>${q.maxLabel||'มากที่สุด'}</span></div>
+        <div class="rating-labels"><span>${minL}</span><span>${maxL}</span></div>
         <input type="hidden" id="sv_${q.id}" value="">`;
     } else if(q.type==='radio'){
-      inp=`<div class="radio-group">${(q.options||[]).map((opt,oi)=>`
-        <label class="radio-option" id="ro_${q.id}_${oi}">
-          <input type="radio" name="sv_${q.id}" value="${opt.replace(/"/g,'&quot;')}" onchange="markRO('${q.id}',${oi},${(q.options||[]).length})">
-          <span>${opt}</span>
-        </label>`).join('')}</div>`;
+      const opts = q.options||[];
+      const optsEn = q.optionsEn||[];
+      inp=`<div class="radio-group">${opts.map((opt,oi)=>{
+        const label=(currentLang==='en'&&optsEn[oi])?optsEn[oi]:opt;
+        return `<label class="radio-option" id="ro_${q.id}_${oi}">
+          <input type="radio" name="sv_${q.id}" value="${opt.replace(/"/g,'&quot;')}" onchange="markRO('${q.id}',${oi},${opts.length})">
+          <span>${label}</span>
+        </label>`;}).join('')}</div>`;
     } else if(q.type==='checkbox'){
-      inp=`<div class="checkbox-group">${(q.options||[]).map(opt=>`
-        <label class="checkbox-option">
+      const opts2 = q.options||[];
+      const opts2En = q.optionsEn||[];
+      inp=`<div class="checkbox-group">${opts2.map((opt,oi)=>{
+        const label=(currentLang==='en'&&opts2En[oi])?opts2En[oi]:opt;
+        return `<label class="checkbox-option">
           <input type="checkbox" name="sv_${q.id}" value="${opt.replace(/"/g,'&quot;')}">
-          <span>${opt}</span>
-        </label>`).join('')}</div>`;
+          <span>${label}</span>
+        </label>`;}).join('')}</div>`;
     } else if(q.type==='textsm'){
       inp=`<input type="text" class="form-control" id="sv_${q.id}" maxlength="50" placeholder="กรอกข้อความ (ไม่เกิน 50 ตัวอักษร)">
         <div style="font-size:11px;color:var(--gray-400);margin-top:4px;">ไม่เกิน 50 ตัวอักษร</div>`;
@@ -1111,7 +1214,7 @@ function submitSurvey() {
     const thanksEl=document.getElementById('sv-thanks');
     thanksEl.style.display='block';
     const msgEl=document.getElementById('sv-thanks-msg');
-    const msg=p.thankMsg||'ข้อมูลของท่านได้รับการบันทึกเรียบร้อยแล้ว';
+    const msg=(currentLang==='en'&&p.thankMsgEn)?p.thankMsgEn:(p.thankMsg||'ข้อมูลของท่านได้รับการบันทึกเรียบร้อยแล้ว');
     msgEl.innerHTML=msg;
   };
   if(gasUrl){
