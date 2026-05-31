@@ -804,7 +804,7 @@ function getProjects() {
   if (local.length > 0) return local;
   return _cloudProjects || [];
 }
-function saveProjects(arr) {
+function saveProjects(arr, changedId) {
   if (!arr || arr.length === 0) {
     console.warn('saveProjects: blocked saving empty array');
     return;
@@ -813,8 +813,18 @@ function saveProjects(arr) {
   localStorage.setItem(PROJ_KEY, JSON.stringify(arr));
   const url = getGasUrl();
   if (!url) return;
-  // ส่งแบบ chunked — แบ่งเป็นกลุ่มๆ ละ 10 โครงการ
-  // GAS จะ clear sheet แล้วเขียน chunk ทีละอัน
+
+  // ถ้ามี changedId ส่งเฉพาะโครงการที่เปลี่ยน (เร็วและไม่เกิน limit)
+  if (changedId) {
+    const changed = arr.find(p => p.id === changedId);
+    if (changed) {
+      const encoded = encodeURIComponent(JSON.stringify(changed));
+      gasJsonp(url + '?action=updateProject&project=' + encoded, function(){}, function(){});
+      return;
+    }
+  }
+
+  // ถ้าไม่มี changedId (สร้างใหม่/ลบ) ส่งทั้งหมดแบบ chunked
   saveProjectsChunked(arr, url, 0);
 }
 
@@ -836,10 +846,9 @@ function saveProjectsChunked(arr, url, chunkIndex) {
   });
 
   if (!isLast) {
-    // ส่ง chunk ถัดไปหลังจาก 500ms
     setTimeout(function() {
       saveProjectsChunked(arr, url, chunkIndex + 1);
-    }, 500);
+    }, 800);
   }
 }
 function getStatus(p) {
@@ -889,7 +898,6 @@ function renderProjectsTable() {
 }
 
 function toggleDevLock(id,val) {
-  // ต้องใช้ _cloudProjects เท่านั้น ห้ามใช้ข้อมูลที่อาจไม่สมบูรณ์
   if (!_cloudProjects || _cloudProjects.length === 0) {
     showToast('⚠️ ข้อมูลยังโหลดไม่เสร็จ กรุณารอสักครู่แล้วลองใหม่');
     return;
@@ -897,33 +905,25 @@ function toggleDevLock(id,val) {
   const idx = _cloudProjects.findIndex(p=>p.id===id);
   if(idx>-1){
     _cloudProjects[idx].deviceLock = val;
-    // Update localStorage ให้ sync
-    localStorage.setItem(PROJ_KEY, JSON.stringify(_cloudProjects));
-    // Save ไป GAS
-    const url = getGasUrl();
-    if (url) gasFormPost(url, { action: 'saveProjects', projects: JSON.stringify(_cloudProjects) });
+    // ส่งเฉพาะโครงการที่เปลี่ยน ไม่ส่งทั้งหมด
+    saveProjects(_cloudProjects, id);
     renderProjectsTable();
   }
 }
 function resetDevLock(id) {
   if(!confirm('ปลดล็อค Device ทั้งหมดสำหรับโครงการนี้?')) return;
 
-  // 1. Clear localStorage เฉพาะ device key ของโครงการนี้เท่านั้น
+  // Clear localStorage
   localStorage.removeItem(DEV_PREFIX+id);
 
-  // 2. Reset GAS _DEVICES sheet
-  //    ใช้ Image() trick — ส่ง GET request แบบ fire-and-forget
-  //    ไม่มี JS execution ไม่มี callback ไม่กระทบ _cloudProjects เลย
+  // Reset GAS _DEVICES — ใช้ Image() trick (fire-and-forget, no JS execution)
   const url = getGasUrl();
   if (url) {
     const img = new Image();
     img.src = url + '?action=resetDevices&projectId=' + encodeURIComponent(id) + '&t=' + Date.now();
   }
 
-  // 3. แสดง toast เท่านั้น — ไม่ renderProjectsTable ไม่ reload
   showToast('✅ ปลดล็อค Device เรียบร้อย');
-
-  // 4. อัปเดตเฉพาะ cell ใน table ที่เกี่ยวข้อง ไม่ render ทั้งหมด
   const devEl = document.querySelector('[data-dev-id="' + id + '"]');
   if (devEl) devEl.textContent = '0 เครื่อง';
 }
