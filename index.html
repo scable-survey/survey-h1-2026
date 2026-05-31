@@ -796,60 +796,16 @@ function loadCloudRespCounts() {
 // PROJECTS CRUD
 // ============================================================
 function getProjects() {
-  // ดึง localStorage ก่อนเสมอ (เร็วและมีข้อมูลเสมอหลัง loadCloud ครั้งแรก)
-  const local = (() => { try { return JSON.parse(localStorage.getItem(PROJ_KEY))||[]; } catch(e){ return []; } })();
-  // ถ้า _cloudProjects มีมากกว่า local ให้ใช้ cloud (ข้อมูลใหม่กว่า)
-  if (_cloudProjects && _cloudProjects.length >= local.length && _cloudProjects.length > 0) return _cloudProjects;
-  // ถ้า local มีข้อมูล ใช้ local (ปลอดภัยกว่าเพราะแน่ใจว่าไม่ว่าง)
-  if (local.length > 0) return local;
-  return _cloudProjects || [];
+  // Return cloud projects if available, else localStorage fallback
+  if (_cloudProjects && _cloudProjects.length > 0) return _cloudProjects;
+  try { return JSON.parse(localStorage.getItem(PROJ_KEY))||[]; } catch(e){ return []; }
 }
-function saveProjects(arr, changedId) {
-  if (!arr || arr.length === 0) {
-    console.warn('saveProjects: blocked saving empty array');
-    return;
-  }
+function saveProjects(arr) {
   _cloudProjects = arr;
   localStorage.setItem(PROJ_KEY, JSON.stringify(arr));
+  // Use hidden iframe form POST — bypasses CORS completely, no URL length limit
   const url = getGasUrl();
-  if (!url) return;
-
-  // ถ้ามี changedId ส่งเฉพาะโครงการที่เปลี่ยน (เร็วและไม่เกิน limit)
-  if (changedId) {
-    const changed = arr.find(p => p.id === changedId);
-    if (changed) {
-      const encoded = encodeURIComponent(JSON.stringify(changed));
-      gasJsonp(url + '?action=updateProject&project=' + encoded, function(){}, function(){});
-      return;
-    }
-  }
-
-  // ถ้าไม่มี changedId (สร้างใหม่/ลบ) ส่งทั้งหมดแบบ chunked
-  saveProjectsChunked(arr, url, 0);
-}
-
-function saveProjectsChunked(arr, url, chunkIndex) {
-  const CHUNK_SIZE = 10;
-  const start = chunkIndex * CHUNK_SIZE;
-  const end = Math.min(start + CHUNK_SIZE, arr.length);
-  const chunk = arr.slice(start, end);
-  const isFirst = chunkIndex === 0;
-  const isLast = end >= arr.length;
-
-  gasFormPost(url, {
-    action: 'saveProjectsChunk',
-    chunk: JSON.stringify(chunk),
-    chunkIndex: String(chunkIndex),
-    isFirst: String(isFirst),
-    isLast: String(isLast),
-    total: String(arr.length)
-  });
-
-  if (!isLast) {
-    setTimeout(function() {
-      saveProjectsChunked(arr, url, chunkIndex + 1);
-    }, 800);
-  }
+  if (url) gasFormPost(url, { action: 'saveProjects', projects: JSON.stringify(arr) });
 }
 function getStatus(p) {
   const now=new Date();
@@ -898,32 +854,47 @@ function renderProjectsTable() {
 }
 
 function toggleDevLock(id,val) {
-  if (!_cloudProjects || _cloudProjects.length === 0) {
-    showToast('⚠️ ข้อมูลยังโหลดไม่เสร็จ กรุณารอสักครู่แล้วลองใหม่');
-    return;
+  // อัปเดต _cloudProjects และ localStorage เท่านั้น
+  // ไม่เรียก saveProjects — ไม่ส่ง _PROJECTS ไป GAS
+  if (_cloudProjects && _cloudProjects.length > 0) {
+    const idx = _cloudProjects.findIndex(p=>p.id===id);
+    if (idx > -1) _cloudProjects[idx].deviceLock = val;
   }
-  const idx = _cloudProjects.findIndex(p=>p.id===id);
-  if(idx>-1){
-    _cloudProjects[idx].deviceLock = val;
-    // ส่งเฉพาะโครงการที่เปลี่ยน ไม่ส่งทั้งหมด
-    saveProjects(_cloudProjects, id);
-    renderProjectsTable();
+  try {
+    const local = JSON.parse(localStorage.getItem(PROJ_KEY)||'[]');
+    const idx = local.findIndex(p=>p.id===id);
+    if (idx > -1) {
+      local[idx].deviceLock = val;
+      localStorage.setItem(PROJ_KEY, JSON.stringify(local));
+    }
+  } catch(e) {}
+  // ส่งเฉพาะ deviceLock ไป GAS (ไม่แตะ _PROJECTS sheet)
+  const url = getGasUrl();
+  if (url) {
+    const img = new Image();
+    img.src = url + '?action=setDeviceLock&projectId=' + encodeURIComponent(id) + '&val=' + (val?'1':'0') + '&t=' + Date.now();
   }
+  renderProjectsTable();
 }
 function resetDevLock(id) {
   if(!confirm('ปลดล็อค Device ทั้งหมดสำหรับโครงการนี้?')) return;
 
-  // Clear localStorage
+  // 1. Clear localStorage เฉพาะ device key ของโครงการนี้เท่านั้น
   localStorage.removeItem(DEV_PREFIX+id);
 
-  // Reset GAS _DEVICES — ใช้ Image() trick (fire-and-forget, no JS execution)
+  // 2. Reset GAS _DEVICES sheet
+  //    ใช้ Image() trick — ส่ง GET request แบบ fire-and-forget
+  //    ไม่มี JS execution ไม่มี callback ไม่กระทบ _cloudProjects เลย
   const url = getGasUrl();
   if (url) {
     const img = new Image();
     img.src = url + '?action=resetDevices&projectId=' + encodeURIComponent(id) + '&t=' + Date.now();
   }
 
+  // 3. แสดง toast เท่านั้น — ไม่ renderProjectsTable ไม่ reload
   showToast('✅ ปลดล็อค Device เรียบร้อย');
+
+  // 4. อัปเดตเฉพาะ cell ใน table ที่เกี่ยวข้อง ไม่ render ทั้งหมด
   const devEl = document.querySelector('[data-dev-id="' + id + '"]');
   if (devEl) devEl.textContent = '0 เครื่อง';
 }
