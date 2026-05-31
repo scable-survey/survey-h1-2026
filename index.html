@@ -756,7 +756,8 @@ function deleteProject(id) {
 }
 function toggleMaster(id) {
   const ps=getProjects(),idx=ps.findIndex(p=>p.id===id); if(idx<0) return;
-  const was=ps[idx].isMaster; ps.forEach(p=>p.isMaster=false); ps[idx].isMaster=!was;
+  // อนุญาตให้มีได้หลาย Master — toggle เฉพาะโครงการที่กด
+  ps[idx].isMaster = !ps[idx].isMaster;
   saveProjects(ps); renderProjectsTable();
   showToast(ps[idx].isMaster?'⭐ ตั้งเป็น Master Template แล้ว':'ยกเลิก Master Template แล้ว');
 }
@@ -1501,12 +1502,32 @@ function executeDuplicate(){
   const qSource=masterProj?(masterProj.questions||[]):(src.questions||[]);
   const mode=document.querySelector('input[name="dup-q-mode"]:checked').value;
   let finalQs=[];
-  if(mode==='all'){finalQs=qSource.map(q=>({...q,id:'q'+Date.now()+Math.random().toString(36).substr(2,4),options:q.options?[...q.options]:[]}));}
-  else if(mode==='select'){const checked=Array.from(document.querySelectorAll('input[name="dup-q-chk"]:checked')).map(c=>parseInt(c.value));finalQs=checked.map(idx=>({...qSource[idx],id:'q'+Date.now()+Math.random().toString(36).substr(2,4)+idx,options:qSource[idx].options?[...qSource[idx].options]:[]}));}
-  const newProj={id:'p'+Date.now(),name:newName,code:newCode,surveyHeader:src.surveyHeader||src.name,surveyDesc:src.surveyDesc||'',
-    dateOpen:document.getElementById('dup-open').value,dateClose:document.getElementById('dup-close').value,
-    deviceLock:src.deviceLock!==false,thankMsg:src.thankMsg||'ข้อมูลของท่านได้รับการบันทึกเรียบร้อยแล้ว',
-    questions:finalQs,isMaster:false,duplicatedFrom:src.code+(masterProj?'+Master:'+masterProj.code:''),
+  const cloneQ = (q, suffix='') => ({
+    ...q,
+    id: 'q'+Date.now()+Math.random().toString(36).substr(2,4)+suffix,
+    options: q.options ? [...q.options] : [],
+    optionsEn: q.optionsEn ? [...q.optionsEn] : [],
+    text: q.text||'', textEn: q.textEn||'',
+    minLabelEn: q.minLabelEn||'', maxLabelEn: q.maxLabelEn||''
+  });
+  if(mode==='all'){finalQs=qSource.map(q=>cloneQ(q));}
+  else if(mode==='select'){const checked=Array.from(document.querySelectorAll('input[name="dup-q-chk"]:checked')).map(c=>parseInt(c.value));finalQs=checked.map(idx=>cloneQ(qSource[idx],idx));}
+  // ใช้ source ของเนื้อหา (master หรือ src ตามที่เลือก)
+  const contentSrc = masterProj || src;
+  const newProj={id:'p'+Date.now(),name:newName,code:newCode,
+    // TH fields
+    surveyHeader:contentSrc.surveyHeader||src.surveyHeader||src.name,
+    surveyDesc:contentSrc.surveyDesc||src.surveyDesc||'',
+    thankMsg:contentSrc.thankMsg||src.thankMsg||'ข้อมูลของท่านได้รับการบันทึกเรียบร้อยแล้ว',
+    // EN fields — copy ทั้งหมด
+    surveyHeaderEn:contentSrc.surveyHeaderEn||src.surveyHeaderEn||'',
+    surveyDescEn:contentSrc.surveyDescEn||src.surveyDescEn||'',
+    thankMsgEn:contentSrc.thankMsgEn||src.thankMsgEn||'',
+    dateOpen:document.getElementById('dup-open').value,
+    dateClose:document.getElementById('dup-close').value,
+    deviceLock:src.deviceLock!==false,
+    questions:finalQs,isMaster:false,
+    duplicatedFrom:src.code+(masterProj?'+Master:'+masterProj.code:''),
     createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
   ps.push(newProj); saveProjects(ps); renderProjectsTable(); closeModal('dup-modal');
   showToast('✅ Duplicate สำเร็จ: '+newName+' ('+newCode+')');
