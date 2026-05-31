@@ -809,7 +809,7 @@ function openProjectModal(id) {
     document.getElementById('pm-thanks-val-en').value = p.thankMsgEn||'';
     currentQs = (p.questions||[]).map(q=>({...q, options:q.options?[...q.options]:[], optionsEn:q.optionsEn?[...q.optionsEn]:[]}));
   } else {
-    ['pm-name','pm-code','pm-header','pm-header-en','pm-open','pm-close'].forEach(i=>document.getElementById(i).value='');
+    ['pm-name','pm-code','pm-header','pm-header-en','pm-open','pm-close'].forEach(i=>{const el=document.getElementById(i);if(el)el.value='';});
     setRichContent('desc-editor',''); document.getElementById('pm-desc-val').value='';
     setRichContent('desc-editor-en',''); document.getElementById('pm-desc-val-en').value='';
     setRichContent('thanks-editor','ข้อมูลของท่านได้รับการบันทึกเรียบร้อยแล้ว');
