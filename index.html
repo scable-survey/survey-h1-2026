@@ -811,8 +811,21 @@ function saveProjects(arr) {
   }
   _cloudProjects = arr;
   localStorage.setItem(PROJ_KEY, JSON.stringify(arr));
+  // ส่งผ่าน JSONP GET — ชัดเจนกว่า gasFormPost ที่อาจ parse ผิด
   const url = getGasUrl();
-  if (url) gasFormPost(url, { action: 'saveProjects', projects: JSON.stringify(arr) });
+  if (!url) return;
+  const encoded = encodeURIComponent(JSON.stringify(arr));
+  // ถ้าข้อมูลไม่ใหญ่เกิน 200KB ส่ง GET ได้เลย
+  if (encoded.length < 200000) {
+    gasJsonp(url + '?action=saveProjects&projects=' + encoded, function(d){
+      if(d && d.status !== 'success') console.warn('saveProjects GAS error:', d);
+    }, function(){ console.warn('saveProjects: GAS timeout, retrying via POST');
+      gasFormPost(url, { action: 'saveProjects', projects: JSON.stringify(arr) });
+    });
+  } else {
+    // ถ้าใหญ่เกินใช้ POST แทน
+    gasFormPost(url, { action: 'saveProjects', projects: JSON.stringify(arr) });
+  }
 }
 function getStatus(p) {
   const now=new Date();
