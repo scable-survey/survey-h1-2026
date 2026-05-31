@@ -1173,9 +1173,9 @@ function renderSvQuestions(qs) {
     } else {
       inp=`<textarea class="form-control" id="sv_${q.id}" rows="3" placeholder="กรอกความคิดเห็น..."></textarea>`;
     }
-    const reasonBlock=q.hasReason?`<div class="reason-block"><label>เหตุผลที่ให้คะแนน และข้อเสนอแนะเพิ่มเติม</label><textarea id="sv_reason_${q.id}" placeholder="กรอกเหตุผลหรือข้อเสนอแนะ (ถ้ามี)..."></textarea></div>`:'';
+    const reasonBlock=q.hasReason?`<div class="reason-block"><label>${currentLang==='en'?'Reason for your rating and Additional suggestions':'เหตุผลที่ให้คะแนน และข้อเสนอแนะเพิ่มเติม'}</label><textarea id="sv_reason_${q.id}" placeholder="${currentLang==='en'?'Enter your reason or suggestions (optional)...':'กรอกเหตุผลหรือข้อเสนอแนะ (ถ้ามี)...'}"></textarea></div>`:'';
     return `<div class="question-block">
-      <div class="question-label">${q.hideNumber?'':'<span style="margin-right:4px;">'+(num)+'.</span>'}<span>${q.text||''}</span>${q.required?'<span class="question-required">*</span>':''}</div>
+      <div class="question-label">${q.hideNumber?'':'<span style="margin-right:4px;">'+(num)+'.</span>'}<span>${(currentLang==='en'&&q.textEn)?q.textEn:(q.text||'')}</span>${q.required?'<span class="question-required">*</span>':''}</div>
       ${inp}
       ${reasonBlock}
     </div>`;
