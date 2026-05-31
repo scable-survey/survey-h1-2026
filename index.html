@@ -414,19 +414,41 @@ input:checked+.slider-sw:before{transform:translateX(20px)}
 
       <div style="border-top:2px solid var(--gray-100);padding-top:20px;margin:4px 0 20px;">
         <div style="font-size:14px;font-weight:700;color:var(--gray-700);margin-bottom:14px;">📝 หัวข้อและคำอธิบายแบบสอบถาม</div>
-        <div class="form-group">
-          <label class="form-label">Header (ชื่อแบบสอบถาม) <span style="color:red">*</span></label>
-          <input type="text" id="pm-header" class="form-control" placeholder="เช่น แบบสอบถามความพึงพอใจผู้อยู่อาศัย H1/2026">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Description (แสดงใต้ชื่อ — รองรับ ตัวหนา ตัวเอียง ขีดเส้นใต้ และ Enter)</label>
-          <div class="rich-toolbar" id="desc-toolbar">
-            <button type="button" onclick="richCmd('desc-editor','bold')" title="ตัวหนา"><b>B</b></button>
-            <button type="button" onclick="richCmd('desc-editor','italic')" title="ตัวเอียง"><i>I</i></button>
-            <button type="button" onclick="richCmd('desc-editor','underline')" title="ขีดเส้นใต้"><u>U</u></button>
+        <!-- 🇹🇭 ภาษาไทย -->
+        <div style="background:var(--gray-50);border-radius:8px;padding:14px;margin-bottom:12px;border:1.5px solid var(--gray-200);">
+          <div style="font-size:12px;font-weight:700;color:var(--gray-500);margin-bottom:10px;">🇹🇭 ภาษาไทย (หลัก)</div>
+          <div class="form-group">
+            <label class="form-label">Header ภาษาไทย <span style="color:red">*</span></label>
+            <input type="text" id="pm-header" class="form-control" placeholder="เช่น แบบสอบถามความพึงพอใจผู้อยู่อาศัย H1/2026">
           </div>
-          <div id="desc-editor" class="rich-editor" contenteditable="true" data-placeholder="คำอธิบายหรือข้อความแนะนำก่อนเริ่มทำแบบสอบถาม..." oninput="syncRich('desc-editor','pm-desc-val')"></div>
-          <input type="hidden" id="pm-desc-val">
+          <div class="form-group" style="margin-bottom:0;">
+            <label class="form-label">Description ภาษาไทย</label>
+            <div class="rich-toolbar">
+              <button type="button" onclick="richCmd('desc-editor','bold')"><b>B</b></button>
+              <button type="button" onclick="richCmd('desc-editor','italic')"><i>I</i></button>
+              <button type="button" onclick="richCmd('desc-editor','underline')"><u>U</u></button>
+            </div>
+            <div id="desc-editor" class="rich-editor" contenteditable="true" data-placeholder="คำอธิบายภาษาไทย..." oninput="syncRich('desc-editor','pm-desc-val')"></div>
+            <input type="hidden" id="pm-desc-val">
+          </div>
+        </div>
+        <!-- 🇬🇧 English -->
+        <div style="background:#f0fdf4;border-radius:8px;padding:14px;border:1.5px solid #bbf7d0;">
+          <div style="font-size:12px;font-weight:700;color:#166534;margin-bottom:10px;">🇬🇧 English (ภาษารอง — เว้นว่างถ้าไม่ต้องการ)</div>
+          <div class="form-group">
+            <label class="form-label">Header (English)</label>
+            <input type="text" id="pm-header-en" class="form-control" placeholder="e.g. Resident Satisfaction Survey H1/2026">
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label class="form-label">Description (English)</label>
+            <div class="rich-toolbar">
+              <button type="button" onclick="richCmd('desc-editor-en','bold')"><b>B</b></button>
+              <button type="button" onclick="richCmd('desc-editor-en','italic')"><i>I</i></button>
+              <button type="button" onclick="richCmd('desc-editor-en','underline')"><u>U</u></button>
+            </div>
+            <div id="desc-editor-en" class="rich-editor" contenteditable="true" data-placeholder="Description in English..." oninput="syncRich('desc-editor-en','pm-desc-val-en')" style="min-height:80px;"></div>
+            <input type="hidden" id="pm-desc-val-en">
+          </div>
         </div>
       </div>
 
@@ -715,13 +737,16 @@ function renderProjectsTable() {
 function toggleDevLock(id,val) { const ps=getProjects(),idx=ps.findIndex(p=>p.id===id); if(idx>-1){ps[idx].deviceLock=val;saveProjects(ps);renderProjectsTable();} }
 function resetDevLock(id) {
   if(!confirm('ปลดล็อค Device ทั้งหมดสำหรับโครงการนี้?')) return;
+  // Clear localStorage
   localStorage.removeItem(DEV_PREFIX+id);
-  const ps=getProjects(),idx=ps.findIndex(p=>p.id===id);
-  if(idx>-1){ps[idx].deviceLock=false;saveProjects(ps);}
-  // Reset cloud devices
+  // Reset cloud _DEVICES sheet
   const url=getGasUrl();
-  if(url) gasFormPost(url, { action:'resetDevices', projectId: id });
-  renderProjectsTable(); showToast('ปลดล็อค Device เรียบร้อย');
+  if(url){
+    gasJsonp(url+'?action=resetDevices&projectId='+encodeURIComponent(id), function(){}, function(){});
+  }
+  // ไม่ได้ปิด deviceLock — แค่ปลดล็อคคนที่ทำไปแล้ว ยังล็อคต่อไป
+  renderProjectsTable();
+  showToast('ปลดล็อค Device เรียบร้อย');
 }
 function deleteProject(id) {
   if(!confirm('ลบโครงการนี้? ข้อมูลการตอบทั้งหมดจะหายด้วย')) return;
