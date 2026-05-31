@@ -854,8 +854,7 @@ function renderProjectsTable() {
 }
 
 function toggleDevLock(id,val) {
-  // อัปเดต _cloudProjects และ localStorage เท่านั้น
-  // ไม่เรียก saveProjects — ไม่ส่ง _PROJECTS ไป GAS
+  // อัปเดต _cloudProjects และ localStorage ทันที
   if (_cloudProjects && _cloudProjects.length > 0) {
     const idx = _cloudProjects.findIndex(p=>p.id===id);
     if (idx > -1) _cloudProjects[idx].deviceLock = val;
@@ -868,13 +867,14 @@ function toggleDevLock(id,val) {
       localStorage.setItem(PROJ_KEY, JSON.stringify(local));
     }
   } catch(e) {}
-  // ส่งเฉพาะ deviceLock ไป GAS (ไม่แตะ _PROJECTS sheet)
+  // แสดงผลทันที
+  renderProjectsTable();
+  // Sync ไป GAS ใน background
   const url = getGasUrl();
   if (url) {
-    const img = new Image();
-    img.src = url + '?action=setDeviceLock&projectId=' + encodeURIComponent(id) + '&val=' + (val?'1':'0') + '&t=' + Date.now();
+    gasJsonp(url + '?action=setDeviceLock&projectId=' + encodeURIComponent(id) + '&val=' + (val?'1':'0'),
+      function(){ }, function(){ });
   }
-  renderProjectsTable();
 }
 function resetDevLock(id) {
   if(!confirm('ปลดล็อค Device ทั้งหมดสำหรับโครงการนี้?')) return;
