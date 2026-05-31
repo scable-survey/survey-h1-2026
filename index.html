@@ -266,7 +266,7 @@ input:checked+.slider-sw:before{transform:translateX(20px)}
       </div>
       <div id="login-error" class="alert alert-danger" style="display:none;"></div>
       <button class="btn btn-primary" style="width:100%;padding:13px;font-size:15px;" onclick="doLogin()">เข้าสู่ระบบ</button>
-      <p style="text-align:center;margin-top:16px;font-size:12px;color:var(--gray-400);">รหัสผ่านเริ่มต้น: <code>admin1234</code></p>
+
     </div>
   </div>
 </div>
@@ -697,11 +697,60 @@ function showPage(n) { document.querySelectorAll('.page').forEach(p=>p.classList
 // ============================================================
 // AUTH
 // ============================================================
-function getCreds() { try { return JSON.parse(localStorage.getItem(CREDS_KEY))||{user:'admin',pass:'admin1234'}; } catch(e){ return {user:'admin',pass:'admin1234'}; } }
-function doLogin() {
-  const u=document.getElementById('login-user').value.trim(), p=document.getElementById('login-pass').value, c=getCreds();
-  if(u===c.user&&p===c.pass){ sessionStorage.setItem('h1_admin','1'); showAdminPage(); }
-  else { const el=document.getElementById('login-error'); el.style.display='flex'; el.textContent='ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง'; }
+function getCreds() {
+  try { return JSON.parse(localStorage.getItem(CREDS_KEY))||{user:'admin',pass:'admin1234'}; }
+  catch(e){ return {user:'admin',pass:'admin1234'}; }
+}
+
+async function doLogin() {
+  const u = document.getElementById('login-user').value.trim();
+  const p = document.getElementById('login-pass').value;
+  const btn = document.querySelector('#page-login .btn-primary');
+  if(btn){ btn.disabled=true; btn.textContent='กำลังตรวจสอบ...'; }
+
+  // เช็ค GAS ก่อน (cloud credentials)
+  const gasUrl = getGasUrl();
+  let valid = false;
+
+  if(gasUrl) {
+    try {
+      const result = await new Promise(resolve => {
+        gasJsonp(gasUrl + '?action=checkAdmin&user=' + encodeURIComponent(u) + '&pass=' + encodeURIComponent(p),
+          function(d){ resolve(d); },
+          function(){ resolve(null); }
+        );
+      });
+      if(result && result.status === 'ok' && result.valid === true) {
+        valid = true;
+        // อัปเดต local cache
+        localStorage.setItem(CREDS_KEY, JSON.stringify({user: u, pass: p}));
+      } else if(result && result.status === 'ok' && result.valid === false) {
+        valid = false;
+      } else {
+        // GAS ไม่ตอบ — fallback ใช้ local
+        const c = getCreds();
+        valid = (u === c.user && p === c.pass);
+      }
+    } catch(e) {
+      const c = getCreds();
+      valid = (u === c.user && p === c.pass);
+    }
+  } else {
+    // ไม่มี GAS — ใช้ local
+    const c = getCreds();
+    valid = (u === c.user && p === c.pass);
+  }
+
+  if(btn){ btn.disabled=false; btn.textContent='เข้าสู่ระบบ'; }
+
+  if(valid) {
+    sessionStorage.setItem('h1_admin','1');
+    showAdminPage();
+  } else {
+    const el=document.getElementById('login-error');
+    el.style.display='flex';
+    el.textContent='ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง';
+  }
 }
 function adminLogout() { sessionStorage.removeItem('h1_admin'); showPage('login'); }
 function showAdminPage() {
@@ -1491,7 +1540,24 @@ function showAdminTab(name){
   if(name==='settings'){const c=getCreds();document.getElementById('s-admin-user').value=c.user;document.getElementById('s-gas-url').value=localStorage.getItem(GAS_KEY)||'';}
   return false;
 }
-function saveAdminCreds(){const u=document.getElementById('s-admin-user').value.trim(),p=document.getElementById('s-admin-pass').value;if(!u)return alert('กรุณากรอกชื่อผู้ใช้');const old=getCreds();localStorage.setItem(CREDS_KEY,JSON.stringify({user:u,pass:p||old.pass}));showToast('บันทึกการตั้งค่า Admin แล้ว');}
+async function saveAdminCreds(){
+  const u=document.getElementById('s-admin-user').value.trim();
+  const p=document.getElementById('s-admin-pass').value;
+  if(!u) return alert('กรุณากรอกชื่อผู้ใช้');
+  const old=getCreds();
+  const newPass = p||old.pass;
+  // บันทึก local
+  localStorage.setItem(CREDS_KEY, JSON.stringify({user:u, pass:newPass}));
+  // บันทึก GAS (cloud)
+  const gasUrl=getGasUrl();
+  if(gasUrl){
+    await new Promise(resolve=>{
+      gasJsonp(gasUrl+'?action=saveAdmin&user='+encodeURIComponent(u)+'&pass='+encodeURIComponent(newPass),
+        function(d){resolve(d);}, function(){resolve(null);});
+    });
+  }
+  showToast('✅ บันทึก Admin credentials แล้ว — มีผลทุกเครื่อง');
+}
 function saveGasUrl(){const url=document.getElementById('s-gas-url').value.trim();localStorage.setItem(GAS_KEY,url);updateGasStatus();showToast('บันทึก GAS URL แล้ว');}
 function saveGasFromModal(){const url=document.getElementById('gm-url').value.trim();localStorage.setItem(GAS_KEY,url);const el=document.getElementById('s-gas-url');if(el)el.value=url;updateGasStatus();closeModal('gas-modal');showToast('บันทึก GAS URL แล้ว');}
 function showGasConfigModal(){document.getElementById('gm-url').value=localStorage.getItem(GAS_KEY)||'';document.getElementById('gm-result').innerHTML='';document.getElementById('gas-modal').style.display='flex';}
