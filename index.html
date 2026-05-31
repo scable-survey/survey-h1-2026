@@ -809,15 +809,11 @@ function saveProjects(arr, changedId) {
   localStorage.setItem(PROJ_KEY, JSON.stringify(arr));
   const url = getGasUrl();
   if (!url) return;
-  // ส่งเฉพาะโครงการที่เปลี่ยน/ใหม่ — ไม่ส่ง 3.9MB ทั้งหมด
+  // ส่งเฉพาะโครงการที่เปลี่ยน/ใหม่ ผ่าน POST (รองรับ URL ยาว)
   const targetId = changedId || arr[arr.length-1].id;
   const changed = arr.find(p => p.id === targetId);
   if (changed) {
-    const encoded = encodeURIComponent(JSON.stringify(changed));
-    gasJsonp(url + '?action=updateProject&project=' + encoded,
-      function(d){ if(d&&d.status==='error') console.warn('updateProject:', d.message); },
-      function(){ console.warn('updateProject timeout'); }
-    );
+    gasFormPost(url, { action: 'updateProject', project: JSON.stringify(changed) });
   }
 }
 function getStatus(p) {
@@ -927,7 +923,7 @@ function toggleMaster(id) {
   const ps=getProjects(),idx=ps.findIndex(p=>p.id===id); if(idx<0) return;
   // อนุญาตให้มีได้หลาย Master — toggle เฉพาะโครงการที่กด
   ps[idx].isMaster = !ps[idx].isMaster;
-  saveProjects(ps); renderProjectsTable();
+  saveProjects(ps, ps[idx].id); renderProjectsTable();
   showToast(ps[idx].isMaster?'⭐ ตั้งเป็น Master Template แล้ว':'ยกเลิก Master Template แล้ว');
 }
 
@@ -1048,7 +1044,7 @@ function saveProject() {
     questions:currentQs.map(q=>({...q,options:q.options?[...q.options]:[]})),
     updatedAt:new Date().toISOString(),createdAt:id?(ps.find(p=>p.id===id)||{}).createdAt:new Date().toISOString()};
   if(id){const idx=ps.findIndex(p=>p.id===id);if(idx>-1)ps[idx]=obj;else ps.push(obj);}else ps.push(obj);
-  saveProjects(ps); renderProjectsTable(); closeModal('proj-modal');
+  saveProjects(ps, obj.id); renderProjectsTable(); closeModal('proj-modal');
   showToast(id?'แก้ไขโครงการแล้ว':'สร้างโครงการใหม่แล้ว');
 }
 
@@ -1724,7 +1720,7 @@ function executeDuplicate(){
     questions:finalQs,isMaster:false,
     duplicatedFrom:src.code+(masterProj?'+Master:'+masterProj.code:''),
     createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
-  ps.push(newProj); saveProjects(ps); renderProjectsTable(); closeModal('dup-modal');
+  ps.push(newProj); saveProjects(ps, newProj.id); renderProjectsTable(); closeModal('dup-modal');
   showToast('✅ Duplicate สำเร็จ: '+newName+' ('+newCode+')');
 }
 function openDupFromMasterModal(){
@@ -1911,7 +1907,17 @@ function executeBulkDuplicate() {
 
   // Save all at once
   const updated = [...ps, ...newProjects];
-  saveProjects(updated);
+  _cloudProjects = updated;
+  localStorage.setItem(PROJ_KEY, JSON.stringify(updated));
+  // ส่งทีละโครงการผ่าน POST
+  const url = getGasUrl();
+  if (url) {
+    newProjects.forEach(function(p, i) {
+      setTimeout(function() {
+        gasFormPost(url, { action: 'updateProject', project: JSON.stringify(p) });
+      }, i * 300);
+    });
+  }
   renderProjectsTable();
   closeModal('bulk-dup-modal');
   showToast(`✅ สร้าง ${newProjects.length} โครงการสำเร็จ!`);
