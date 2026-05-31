@@ -800,12 +800,25 @@ function getProjects() {
   if (_cloudProjects && _cloudProjects.length > 0) return _cloudProjects;
   try { return JSON.parse(localStorage.getItem(PROJ_KEY))||[]; } catch(e){ return []; }
 }
-function saveProjects(arr) {
+function saveProjects(arr, changedId) {
+  if (!arr || arr.length === 0) {
+    console.warn('saveProjects: blocked empty array');
+    return;
+  }
   _cloudProjects = arr;
   localStorage.setItem(PROJ_KEY, JSON.stringify(arr));
-  // Use hidden iframe form POST — bypasses CORS completely, no URL length limit
   const url = getGasUrl();
-  if (url) gasFormPost(url, { action: 'saveProjects', projects: JSON.stringify(arr) });
+  if (!url) return;
+  // ส่งเฉพาะโครงการที่เปลี่ยน/ใหม่ — ไม่ส่ง 3.9MB ทั้งหมด
+  const targetId = changedId || arr[arr.length-1].id;
+  const changed = arr.find(p => p.id === targetId);
+  if (changed) {
+    const encoded = encodeURIComponent(JSON.stringify(changed));
+    gasJsonp(url + '?action=updateProject&project=' + encoded,
+      function(d){ if(d&&d.status==='error') console.warn('updateProject:', d.message); },
+      function(){ console.warn('updateProject timeout'); }
+    );
+  }
 }
 function getStatus(p) {
   const now=new Date();
@@ -900,7 +913,13 @@ function resetDevLock(id) {
 }
 function deleteProject(id) {
   if(!confirm('ลบโครงการนี้? ข้อมูลการตอบทั้งหมดจะหายด้วย')) return;
-  saveProjects(getProjects().filter(p=>p.id!==id));
+  const ps = getProjects().filter(p=>p.id!==id);
+  _cloudProjects = ps;
+  localStorage.setItem(PROJ_KEY, JSON.stringify(ps));
+  // ส่ง deleteProject ไป GAS แทนการส่งทั้งหมด
+  const url = getGasUrl();
+  if(url) gasJsonp(url + '?action=deleteProject&projectId=' + encodeURIComponent(id),
+    function(){}, function(){});
   localStorage.removeItem(RESP_PREFIX+id); localStorage.removeItem(DEV_PREFIX+id);
   renderProjectsTable(); showToast('ลบโครงการแล้ว');
 }
