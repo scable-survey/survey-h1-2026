@@ -799,23 +799,26 @@ function openProjectModal(id) {
     setRichContent('desc-editor', p.surveyDesc||'');
     document.getElementById('pm-desc-val').value = p.surveyDesc||'';
     setRichContent('desc-editor-en', p.surveyDescEn||'');
-    document.getElementById('pm-desc-val-en').value = p.surveyDescEn||'';
+    const _dvenl=document.getElementById('pm-desc-val-en'); if(_dvenl)_dvenl.value=p.surveyDescEn||'';
     document.getElementById('pm-open').value = p.dateOpen||'';
     document.getElementById('pm-close').value = p.dateClose||'';
     document.getElementById('pm-devlock').checked = p.deviceLock!==false;
     setRichContent('thanks-editor', p.thankMsg||'ข้อมูลของท่านได้รับการบันทึกเรียบร้อยแล้ว');
     document.getElementById('pm-thanks-val').value = p.thankMsg||'';
     setRichContent('thanks-editor-en', p.thankMsgEn||'');
-    document.getElementById('pm-thanks-val-en').value = p.thankMsgEn||'';
+    const _tvenl=document.getElementById('pm-thanks-val-en'); if(_tvenl)_tvenl.value=p.thankMsgEn||'';
     currentQs = (p.questions||[]).map(q=>({...q, options:q.options?[...q.options]:[], optionsEn:q.optionsEn?[...q.optionsEn]:[]}));
   } else {
     ['pm-name','pm-code','pm-header','pm-header-en','pm-open','pm-close'].forEach(i=>{const el=document.getElementById(i);if(el)el.value='';});
-    setRichContent('desc-editor',''); document.getElementById('pm-desc-val').value='';
-    setRichContent('desc-editor-en',''); document.getElementById('pm-desc-val-en').value='';
+    setRichContent('desc-editor','');
+    const _dv=document.getElementById('pm-desc-val'); if(_dv)_dv.value='';
+    setRichContent('desc-editor-en','');
+    const _dven=document.getElementById('pm-desc-val-en'); if(_dven)_dven.value='';
     setRichContent('thanks-editor','ข้อมูลของท่านได้รับการบันทึกเรียบร้อยแล้ว');
-    document.getElementById('pm-thanks-val').value='ข้อมูลของท่านได้รับการบันทึกเรียบร้อยแล้ว';
-    setRichContent('thanks-editor-en',''); document.getElementById('pm-thanks-val-en').value='';
-    document.getElementById('pm-devlock').checked=true;
+    const _tv=document.getElementById('pm-thanks-val'); if(_tv)_tv.value='ข้อมูลของท่านได้รับการบันทึกเรียบร้อยแล้ว';
+    setRichContent('thanks-editor-en','');
+    const _tven=document.getElementById('pm-thanks-val-en'); if(_tven)_tven.value='';
+    const _dl=document.getElementById('pm-devlock'); if(_dl)_dl.checked=true;
   }
   updateProjUrl(); renderQBuilder();
   document.getElementById('proj-modal').style.display='flex';
