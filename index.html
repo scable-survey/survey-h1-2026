@@ -796,18 +796,21 @@ function loadCloudRespCounts() {
 // PROJECTS CRUD
 // ============================================================
 function getProjects() {
-  // Return cloud projects if available, else localStorage fallback
-  if (_cloudProjects && _cloudProjects.length > 0) return _cloudProjects;
-  try { return JSON.parse(localStorage.getItem(PROJ_KEY))||[]; } catch(e){ return []; }
+  // ดึง localStorage ก่อนเสมอ (เร็วและมีข้อมูลเสมอหลัง loadCloud ครั้งแรก)
+  const local = (() => { try { return JSON.parse(localStorage.getItem(PROJ_KEY))||[]; } catch(e){ return []; } })();
+  // ถ้า _cloudProjects มีมากกว่า local ให้ใช้ cloud (ข้อมูลใหม่กว่า)
+  if (_cloudProjects && _cloudProjects.length >= local.length && _cloudProjects.length > 0) return _cloudProjects;
+  // ถ้า local มีข้อมูล ใช้ local (ปลอดภัยกว่าเพราะแน่ใจว่าไม่ว่าง)
+  if (local.length > 0) return local;
+  return _cloudProjects || [];
 }
 function saveProjects(arr) {
   if (!arr || arr.length === 0) {
-    console.warn('saveProjects: blocked empty array');
+    console.warn('saveProjects: blocked saving empty array — prevented data loss');
     return;
   }
   _cloudProjects = arr;
   localStorage.setItem(PROJ_KEY, JSON.stringify(arr));
-  // Use hidden iframe form POST — bypasses CORS completely, no URL length limit
   const url = getGasUrl();
   if (url) gasFormPost(url, { action: 'saveProjects', projects: JSON.stringify(arr) });
 }
@@ -858,14 +861,19 @@ function renderProjectsTable() {
 }
 
 function toggleDevLock(id,val) {
-  // ใช้ _cloudProjects โดยตรง — มั่นใจว่ามีข้อมูลครบ
-  const ps = (_cloudProjects && _cloudProjects.length > 0)
-    ? _cloudProjects
-    : JSON.parse(localStorage.getItem(PROJ_KEY)||'[]');
-  const idx = ps.findIndex(p=>p.id===id);
+  // ต้องใช้ _cloudProjects เท่านั้น ห้ามใช้ข้อมูลที่อาจไม่สมบูรณ์
+  if (!_cloudProjects || _cloudProjects.length === 0) {
+    showToast('⚠️ ข้อมูลยังโหลดไม่เสร็จ กรุณารอสักครู่แล้วลองใหม่');
+    return;
+  }
+  const idx = _cloudProjects.findIndex(p=>p.id===id);
   if(idx>-1){
-    ps[idx].deviceLock=val;
-    saveProjects(ps);
+    _cloudProjects[idx].deviceLock = val;
+    // Update localStorage ให้ sync
+    localStorage.setItem(PROJ_KEY, JSON.stringify(_cloudProjects));
+    // Save ไป GAS
+    const url = getGasUrl();
+    if (url) gasFormPost(url, { action: 'saveProjects', projects: JSON.stringify(_cloudProjects) });
     renderProjectsTable();
   }
 }
