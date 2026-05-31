@@ -806,25 +806,40 @@ function getProjects() {
 }
 function saveProjects(arr) {
   if (!arr || arr.length === 0) {
-    console.warn('saveProjects: blocked saving empty array — prevented data loss');
+    console.warn('saveProjects: blocked saving empty array');
     return;
   }
   _cloudProjects = arr;
   localStorage.setItem(PROJ_KEY, JSON.stringify(arr));
-  // ส่งผ่าน JSONP GET — ชัดเจนกว่า gasFormPost ที่อาจ parse ผิด
   const url = getGasUrl();
   if (!url) return;
-  const encoded = encodeURIComponent(JSON.stringify(arr));
-  // ถ้าข้อมูลไม่ใหญ่เกิน 200KB ส่ง GET ได้เลย
-  if (encoded.length < 200000) {
-    gasJsonp(url + '?action=saveProjects&projects=' + encoded, function(d){
-      if(d && d.status !== 'success') console.warn('saveProjects GAS error:', d);
-    }, function(){ console.warn('saveProjects: GAS timeout, retrying via POST');
-      gasFormPost(url, { action: 'saveProjects', projects: JSON.stringify(arr) });
-    });
-  } else {
-    // ถ้าใหญ่เกินใช้ POST แทน
-    gasFormPost(url, { action: 'saveProjects', projects: JSON.stringify(arr) });
+  // ส่งแบบ chunked — แบ่งเป็นกลุ่มๆ ละ 10 โครงการ
+  // GAS จะ clear sheet แล้วเขียน chunk ทีละอัน
+  saveProjectsChunked(arr, url, 0);
+}
+
+function saveProjectsChunked(arr, url, chunkIndex) {
+  const CHUNK_SIZE = 10;
+  const start = chunkIndex * CHUNK_SIZE;
+  const end = Math.min(start + CHUNK_SIZE, arr.length);
+  const chunk = arr.slice(start, end);
+  const isFirst = chunkIndex === 0;
+  const isLast = end >= arr.length;
+
+  gasFormPost(url, {
+    action: 'saveProjectsChunk',
+    chunk: JSON.stringify(chunk),
+    chunkIndex: String(chunkIndex),
+    isFirst: String(isFirst),
+    isLast: String(isLast),
+    total: String(arr.length)
+  });
+
+  if (!isLast) {
+    // ส่ง chunk ถัดไปหลังจาก 500ms
+    setTimeout(function() {
+      saveProjectsChunked(arr, url, chunkIndex + 1);
+    }, 500);
   }
 }
 function getStatus(p) {
