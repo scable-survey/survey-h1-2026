@@ -812,13 +812,8 @@ function saveProjects(arr, changedId) {
   const targetId = changedId || arr[arr.length-1].id;
   const changed = arr.find(p => p.id === targetId);
   if (!changed) return;
-  // ใช้ fetch no-cors POST — GAS รับได้ ไม่มี 403 ไม่มี URL limit
-  fetch(url, {
-    method: 'POST',
-    mode: 'no-cors',
-    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-    body: 'action=updateProject&project=' + encodeURIComponent(JSON.stringify(changed))
-  }).catch(function(){});
+  // ใช้ gasFormPost — รองรับข้อมูลขนาดใหญ่ GAS รับได้แน่นอน
+  gasFormPost(url, { action: 'updateProject', project: JSON.stringify(changed) });
 }
 function getStatus(p) {
   const now=new Date();
@@ -1913,18 +1908,12 @@ function executeBulkDuplicate() {
   const updated = [...ps, ...newProjects];
   _cloudProjects = updated;
   localStorage.setItem(PROJ_KEY, JSON.stringify(updated));
-  // ส่งทีละโครงการผ่าน fetch no-cors POST
   const url = getGasUrl();
   if (url) {
     newProjects.forEach(function(p, i) {
       setTimeout(function() {
-        fetch(url, {
-          method: 'POST',
-          mode: 'no-cors',
-          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-          body: 'action=updateProject&project=' + encodeURIComponent(JSON.stringify(p))
-        }).catch(function(){});
-      }, i * 300);
+        gasFormPost(url, { action: 'updateProject', project: JSON.stringify(p) });
+      }, i * 800);
     });
   }
   renderProjectsTable();
