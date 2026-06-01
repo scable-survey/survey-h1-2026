@@ -812,8 +812,31 @@ function saveProjects(arr, changedId) {
   const targetId = changedId || arr[arr.length-1].id;
   const changed = arr.find(p => p.id === targetId);
   if (!changed) return;
-  // ใช้ gasFormPost — รองรับข้อมูลขนาดใหญ่ GAS รับได้แน่นอน
-  gasFormPost(url, { action: 'updateProject', project: JSON.stringify(changed) });
+
+  // แยก questions ออก ส่ง metadata ก่อน (เล็กพอสำหรับ JSONP GET)
+  const meta = Object.assign({}, changed, {questions: []});
+  const metaEncoded = encodeURIComponent(JSON.stringify(meta));
+
+  // ส่ง metadata ก่อน
+  gasJsonp(url + '?action=updateProject&project=' + metaEncoded,
+    function(d) {
+      if (!d || d.status === 'error') { console.warn('updateProject meta failed'); return; }
+      // ส่ง questions แยก เป็น chunks ละ 3 ข้อ
+      const qs = changed.questions || [];
+      if (qs.length === 0) return;
+      const chunks = [];
+      for (var i = 0; i < qs.length; i += 3) chunks.push(qs.slice(i, i+3));
+      chunks.forEach(function(chunk, ci) {
+        setTimeout(function() {
+          const qEncoded = encodeURIComponent(JSON.stringify(chunk));
+          gasJsonp(url + '?action=updateProjectQuestions&projectId=' + encodeURIComponent(changed.id) +
+            '&questions=' + qEncoded + '&chunkIndex=' + ci + '&totalChunks=' + chunks.length,
+            function(){}, function(){ console.warn('questions chunk', ci, 'failed'); });
+        }, ci * 400);
+      });
+    },
+    function(){ console.warn('updateProject meta timeout'); }
+  );
 }
 function getStatus(p) {
   const now=new Date();
