@@ -811,13 +811,14 @@ function saveProjects(arr, changedId) {
   if (!url) return;
   const targetId = changedId || arr[arr.length-1].id;
   const changed = arr.find(p => p.id === targetId);
-  if (changed) {
-    const encoded = encodeURIComponent(JSON.stringify(changed));
-    gasJsonp(url + '?action=updateProject&project=' + encoded,
-      function(d){ if(d&&d.status==='error') console.warn('updateProject error:', d.message); },
-      function(){ console.warn('updateProject failed, retrying...'); }
-    );
-  }
+  if (!changed) return;
+  // ใช้ fetch no-cors POST — GAS รับได้ ไม่มี 403 ไม่มี URL limit
+  fetch(url, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'action=updateProject&project=' + encodeURIComponent(JSON.stringify(changed))
+  }).catch(function(){});
 }
 function getStatus(p) {
   const now=new Date();
@@ -1912,15 +1913,18 @@ function executeBulkDuplicate() {
   const updated = [...ps, ...newProjects];
   _cloudProjects = updated;
   localStorage.setItem(PROJ_KEY, JSON.stringify(updated));
-  // ส่งทีละโครงการผ่าน JSONP GET
+  // ส่งทีละโครงการผ่าน fetch no-cors POST
   const url = getGasUrl();
   if (url) {
     newProjects.forEach(function(p, i) {
       setTimeout(function() {
-        const encoded = encodeURIComponent(JSON.stringify(p));
-        gasJsonp(url + '?action=updateProject&project=' + encoded,
-          function(){}, function(){ console.warn('bulk updateProject failed:', p.code); });
-      }, i * 500);
+        fetch(url, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body: 'action=updateProject&project=' + encodeURIComponent(JSON.stringify(p))
+        }).catch(function(){});
+      }, i * 300);
     });
   }
   renderProjectsTable();
