@@ -812,30 +812,24 @@ function saveProjects(arr, changedId) {
   const targetId = changedId || arr[arr.length-1].id;
   const changed = arr.find(p => p.id === targetId);
   if (!changed) return;
-
-  // แยก questions ออก ส่ง metadata ก่อน (เล็กพอสำหรับ JSONP GET)
-  const meta = Object.assign({}, changed, {questions: []});
-  const metaEncoded = encodeURIComponent(JSON.stringify(meta));
-
-  // ส่ง metadata ก่อน
-  gasJsonp(url + '?action=updateProject&project=' + metaEncoded,
+  // เก็บข้อมูลใน window แล้วส่งแค่ key ไป GAS
+  // GAS callback กลับมา แล้วเราส่งข้อมูลจริงผ่าน gasFormPost
+  window._pendingProject = changed;
+  gasJsonp(url + '?action=requestUpdate&projectId=' + encodeURIComponent(changed.id),
     function(d) {
-      if (!d || d.status === 'error') { console.warn('updateProject meta failed'); return; }
-      // ส่ง questions แยก เป็น chunks ละ 3 ข้อ
-      const qs = changed.questions || [];
-      if (qs.length === 0) return;
-      const chunks = [];
-      for (var i = 0; i < qs.length; i += 3) chunks.push(qs.slice(i, i+3));
-      chunks.forEach(function(chunk, ci) {
-        setTimeout(function() {
-          const qEncoded = encodeURIComponent(JSON.stringify(chunk));
-          gasJsonp(url + '?action=updateProjectQuestions&projectId=' + encodeURIComponent(changed.id) +
-            '&questions=' + qEncoded + '&chunkIndex=' + ci + '&totalChunks=' + chunks.length,
-            function(){}, function(){ console.warn('questions chunk', ci, 'failed'); });
-        }, ci * 400);
-      });
+      // GAS พร้อมรับแล้ว ส่งข้อมูลจริงผ่าน iframe POST
+      if (window._pendingProject) {
+        gasFormPost(url, { action: 'updateProject', project: JSON.stringify(window._pendingProject) });
+        window._pendingProject = null;
+      }
     },
-    function(){ console.warn('updateProject meta timeout'); }
+    function() {
+      // gasJsonp failed — ลอง gasFormPost โดยตรงเลย
+      if (window._pendingProject) {
+        gasFormPost(url, { action: 'updateProject', project: JSON.stringify(window._pendingProject) });
+        window._pendingProject = null;
+      }
+    }
   );
 }
 function getStatus(p) {
