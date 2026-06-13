@@ -725,7 +725,11 @@ async function doLogin() {
       });
       if(result && result.status === 'ok' && result.valid === true) {
         valid = true;
-        // อัปเดต local cache
+        // เก็บ adminToken ทันทีที่ได้รับ (ยังอยู่ใน scope)
+        if(result.adminToken) {
+          _adminToken = result.adminToken;
+          sessionStorage.setItem('h1_admin_token', result.adminToken);
+        }
         localStorage.setItem(CREDS_KEY, JSON.stringify({user: u, pass: p}));
       } else if(result && result.status === 'ok' && result.valid === false) {
         valid = false;
@@ -747,11 +751,6 @@ async function doLogin() {
   if(btn){ btn.disabled=false; btn.textContent='เข้าสู่ระบบ'; }
 
   if(valid) {
-    // เก็บ adminToken จาก GAS
-    if(result && result.adminToken) {
-      _adminToken = result.adminToken;
-      sessionStorage.setItem('h1_admin_token', result.adminToken);
-    }
     sessionStorage.setItem('h1_admin','1');
     showAdminPage();
   } else {
