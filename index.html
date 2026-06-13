@@ -655,7 +655,10 @@ const CREDS_KEY='h1_admin_creds', GAS_KEY='h1_gas_url', PROJ_KEY='h1_projects_v2
 const RESP_PREFIX='h1_resp_', DEV_PREFIX='h1_dev_';
 // GAS URL hardcoded — ใช้ได้ทุกเครื่องโดยไม่ต้องตั้งค่า
 const GAS_URL_DEFAULT = 'https://script.google.com/macros/s/AKfycbwYb_NxFA4LbNNqvasBjkDJ5tu3iDQ4rsnLk3Tx67DiWyVmC_5fcD_bDiofk2IQGADbQw/exec';
+const GAS_API_KEY = '89ead4cc68c364fdc0eb41fc9f43a0de042a769419d2d258fa7e9490183c11e2';
 let currentQs=[], filterStatus='', filterQuery='', activeSurveyProject=null, _dupSourceId=null, _cloudRespCounts={}, _cloudDevCounts={}, currentLang='th';
+let _adminToken = ''; // Admin session token (ได้จาก GAS หลัง login)
+let _surveyTokenCache = {}; // Cache survey tokens
 let _gasUrl='', _cloudProjects=[], _cloudDevices={}, _isSyncing=false;
 
 // ============================================================
@@ -744,6 +747,11 @@ async function doLogin() {
   if(btn){ btn.disabled=false; btn.textContent='เข้าสู่ระบบ'; }
 
   if(valid) {
+    // เก็บ adminToken จาก GAS
+    if(result && result.adminToken) {
+      _adminToken = result.adminToken;
+      sessionStorage.setItem('h1_admin_token', result.adminToken);
+    }
     sessionStorage.setItem('h1_admin','1');
     showAdminPage();
   } else {
@@ -754,6 +762,8 @@ async function doLogin() {
 }
 function adminLogout() { sessionStorage.removeItem('h1_admin'); showPage('login'); }
 function showAdminPage() {
+  // โหลด adminToken จาก session ถ้ามี
+  if (!_adminToken) _adminToken = sessionStorage.getItem('h1_admin_token') || '';
   showPage('admin');
   updateGasStatus();
   loadCloudProjects();
@@ -913,7 +923,8 @@ function resetDevLock(id) {
   const url = getGasUrl();
   if (url) {
     const img = new Image();
-    img.src = url + '?action=resetDevices&projectId=' + encodeURIComponent(id) + '&t=' + Date.now();
+    const _a1 = _adminToken ? ('adminToken=' + _adminToken) : ('apiKey=' + GAS_API_KEY);
+    img.src = url + '?action=resetDevices&projectId=' + encodeURIComponent(id) + '&' + _a1 + '&t=' + Date.now();
   }
 
   // 3. แสดง toast เท่านั้น — ไม่ renderProjectsTable ไม่ reload
@@ -1279,6 +1290,29 @@ async function doRenderSurvey(p) {
   renderSvQuestions(p.questions||[]);
   document.getElementById('sv-content').style.display='block';
 }
+// ============================================================
+// SURVEY TOKEN — ดึงจาก GAS แล้ว cache ไว้
+// ============================================================
+async function getSurveyToken(projectCode) {
+  if (_surveyTokenCache[projectCode]) return _surveyTokenCache[projectCode];
+  const url = getGasUrl();
+  if (!url) return '';
+  return new Promise(resolve => {
+    gasJsonp(url + '?action=getSurveyToken&projectCode=' + encodeURIComponent(projectCode) + '&apiKey=' + GAS_API_KEY,
+      function(d) {
+        if (d && d.status === 'ok' && d.surveyToken) {
+          _surveyTokenCache[projectCode] = d.surveyToken;
+          resolve(d.surveyToken);
+        } else resolve('');
+      },
+      function() { resolve(''); }
+    );
+  });
+}
+
+// Override gasJsonp สำหรับ survey actions ให้ใช้ surveyToken
+const _origGasJsonp = gasJsonp;
+
 // ============================================================
 // LANGUAGE SWITCH
 // ============================================================
@@ -2022,7 +2056,9 @@ function gasJsonp(url, onSuccess, onError) {
     if (onSuccess) onSuccess(data);
   };
   const s = document.createElement('script');
-  s.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + cbName + '&t=' + Date.now();
+  // ส่ง adminToken ถ้ามี ไม่งั้นส่ง apiKey
+  const _authParam = _adminToken ? ('adminToken=' + _adminToken) : ('apiKey=' + GAS_API_KEY);
+  s.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + cbName + '&' + _authParam + '&t=' + Date.now();
   s.onerror = () => { clearTimeout(timeout); delete window[cbName]; if (onError) onError(); };
   document.head.appendChild(s);
 }
@@ -2038,7 +2074,9 @@ function gasFormPost(url, params) {
   form.action = url;
   form.target = iframe.name;
   form.style.display = 'none';
-  Object.entries(params).forEach(([k, v]) => {
+  const _authObj = _adminToken ? { adminToken: _adminToken } : { apiKey: GAS_API_KEY };
+  const allParams = Object.assign(_authObj, params);
+  Object.entries(allParams).forEach(([k, v]) => {
     const inp = document.createElement('input');
     inp.type = 'hidden'; inp.name = k; inp.value = v;
     form.appendChild(inp);
