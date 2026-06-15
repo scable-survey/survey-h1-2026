@@ -655,9 +655,10 @@ const CREDS_KEY='h1_admin_creds', GAS_KEY='h1_gas_url', PROJ_KEY='h1_projects_v2
 const RESP_PREFIX='h1_resp_', DEV_PREFIX='h1_dev_';
 // GAS URL hardcoded — ใช้ได้ทุกเครื่องโดยไม่ต้องตั้งค่า
 const GAS_URL_DEFAULT = 'https://script.google.com/macros/s/AKfycbwYb_NxFA4LbNNqvasBjkDJ5tu3iDQ4rsnLk3Tx67DiWyVmC_5fcD_bDiofk2IQGADbQw/exec';
-const GAS_API_KEY = '89ead4cc68c364fdc0eb41fc9f43a0de042a769419d2d258fa7e9490183c11e2';
+const GAS_API_KEY = 'eb4b6a6840902054264a36cb7ef0d611f1c20a03c4f3f0820759938dd485929b';
 let currentQs=[], filterStatus='', filterQuery='', activeSurveyProject=null, _dupSourceId=null, _cloudRespCounts={}, _cloudDevCounts={}, currentLang='th';
 let _adminToken = ''; // Admin session token (ได้จาก GAS หลัง login)
+let _surveyAuth = null; // { surveyToken, projectCode } สำหรับฝั่งลูกบ้าน
 let _surveyTokenCache = {}; // Cache survey tokens
 let _gasUrl='', _cloudProjects=[], _cloudDevices={}, _isSyncing=false;
 
@@ -701,8 +702,8 @@ function showPage(n) { document.querySelectorAll('.page').forEach(p=>p.classList
 // AUTH
 // ============================================================
 function getCreds() {
-  try { return JSON.parse(localStorage.getItem(CREDS_KEY))||{user:'admin',pass:'admin1234'}; }
-  catch(e){ return {user:'admin',pass:'admin1234'}; }
+  try { return JSON.parse(localStorage.getItem(CREDS_KEY)) || {user:'', pass:''}; }
+  catch(e){ return {user:'', pass:''}; }
 }
 
 async function doLogin() {
@@ -711,52 +712,39 @@ async function doLogin() {
   const btn = document.querySelector('#page-login .btn-primary');
   if(btn){ btn.disabled=true; btn.textContent='กำลังตรวจสอบ...'; }
 
-  // เช็ค GAS ก่อน (cloud credentials)
   const gasUrl = getGasUrl();
   let valid = false;
+  const showErr = (msg) => {
+    const el=document.getElementById('login-error');
+    el.style.display='flex';
+    el.textContent = msg || 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง';
+  };
 
-  if(gasUrl) {
-    try {
-      const result = await new Promise(resolve => {
-        gasJsonp(gasUrl + '?action=checkAdmin&user=' + encodeURIComponent(u) + '&pass=' + encodeURIComponent(p),
-          function(d){ resolve(d); },
-          function(){ resolve(null); }
-        );
-      });
-      if(result && result.status === 'ok' && result.valid === true) {
-        valid = true;
-        // เก็บ adminToken ทันทีที่ได้รับ (ยังอยู่ใน scope)
-        if(result.adminToken) {
-          _adminToken = result.adminToken;
-          sessionStorage.setItem('h1_admin_token', result.adminToken);
-        }
-        localStorage.setItem(CREDS_KEY, JSON.stringify({user: u, pass: p}));
-      } else if(result && result.status === 'ok' && result.valid === false) {
-        valid = false;
-      } else {
-        // GAS ไม่ตอบ — fallback ใช้ local
-        const c = getCreds();
-        valid = (u === c.user && p === c.pass);
-      }
-    } catch(e) {
-      const c = getCreds();
-      valid = (u === c.user && p === c.pass);
-    }
-  } else {
-    // ไม่มี GAS — ใช้ local
-    const c = getCreds();
-    valid = (u === c.user && p === c.pass);
+  if(!gasUrl) {
+    if(btn){ btn.disabled=false; btn.textContent='เข้าสู่ระบบ'; }
+    showErr('ไม่พบการเชื่อมต่อระบบ กรุณาลองใหม่');
+    return;
   }
+
+  // ตรวจสอบกับ GAS เท่านั้น — ต้องได้ adminToken กลับมา
+  const result = await new Promise(resolve => {
+    gasJsonp(gasUrl + '?action=checkAdmin&user=' + encodeURIComponent(u) + '&pass=' + encodeURIComponent(p),
+      function(d){ resolve(d); },
+      function(){ resolve(null); }
+    );
+  });
 
   if(btn){ btn.disabled=false; btn.textContent='เข้าสู่ระบบ'; }
 
-  if(valid) {
+  if(result && result.status === 'ok' && result.valid === true && result.adminToken) {
+    _adminToken = result.adminToken;
+    sessionStorage.setItem('h1_admin_token', result.adminToken);
     sessionStorage.setItem('h1_admin','1');
     showAdminPage();
+  } else if(result && result.status === 'ok' && result.valid === false) {
+    showErr('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
   } else {
-    const el=document.getElementById('login-error');
-    el.style.display='flex';
-    el.textContent='ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง';
+    showErr('เชื่อมต่อระบบไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
   }
 }
 function adminLogout() { sessionStorage.removeItem('h1_admin'); showPage('login'); }
@@ -774,6 +762,16 @@ function loadCloudProjects() {
   const tbody = document.getElementById('projects-tbody');
   if (tbody) tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--gray-400);">☁️ กำลังโหลดข้อมูลจาก Cloud...</td></tr>';
   gasJsonp(url + '?action=getProjects', function(d) {
+    if (d && d.status === 'error' && d.message === 'Unauthorized') {
+      // Token หมดอายุ — ให้ login ใหม่
+      _adminToken = '';
+      sessionStorage.removeItem('h1_admin_token');
+      sessionStorage.removeItem('h1_admin');
+      showPage('login');
+      const el=document.getElementById('login-error');
+      if(el){ el.style.display='flex'; el.textContent='เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่'; }
+      return;
+    }
     if (d && d.status === 'ok' && d.projects && d.projects.length > 0) {
       _cloudProjects = d.projects;
       localStorage.setItem(PROJ_KEY, JSON.stringify(d.projects));
@@ -920,10 +918,9 @@ function resetDevLock(id) {
   //    ใช้ Image() trick — ส่ง GET request แบบ fire-and-forget
   //    ไม่มี JS execution ไม่มี callback ไม่กระทบ _cloudProjects เลย
   const url = getGasUrl();
-  if (url) {
+  if (url && _adminToken) {
     const img = new Image();
-    const _a1 = _adminToken ? ('adminToken=' + _adminToken) : ('apiKey=' + GAS_API_KEY);
-    img.src = url + '?action=resetDevices&projectId=' + encodeURIComponent(id) + '&' + _a1 + '&t=' + Date.now();
+    img.src = url + '?action=resetDevices&projectId=' + encodeURIComponent(id) + '&adminToken=' + _adminToken + '&t=' + Date.now();
   }
 
   // 3. แสดง toast เท่านั้น — ไม่ renderProjectsTable ไม่ reload
@@ -1198,31 +1195,43 @@ function renderQBuilder() {
 // SURVEY RENDER
 // ============================================================
 async function loadSurvey(code) {
-  // 1. โหลด cache จาก localStorage ก่อนทันที (ไม่ต้องรอ network)
+  const url = getGasUrl();
+  // 1. ดึง surveyToken ของโครงการนี้ก่อน (ตั้ง _surveyAuth ให้ทุก request ต่อไปผ่าน)
+  if (url) {
+    const tok = await getSurveyToken(code);
+    if (tok) _surveyAuth = { surveyToken: tok, projectCode: code };
+  }
+
+  // 2. โหลด cache จาก localStorage ก่อนทันที (ไม่ต้องรอ network)
   let cached = JSON.parse(localStorage.getItem(PROJ_KEY)||'[]');
   let p = cached.find(x=>x.code===code);
 
   if (p) {
-    // แสดงผลจาก cache ก่อนเลย — เร็วมาก
     document.getElementById('sv-loading').style.display='none';
     doRenderSurvey(p);
-    // Sync cloud ใน background ไม่บล็อก UI
-    const url = getGasUrl();
-    if (url) gasJsonp(url+'?action=getProjects', function(d){
-      if(d&&d.status==='ok'&&d.projects) localStorage.setItem(PROJ_KEY, JSON.stringify(d.projects));
+    // Sync โครงการเดียวจาก cloud ใน background (ไม่บล็อก UI)
+    if (url) gasJsonp(url+'?action=getProjectForSurvey&projectCode='+encodeURIComponent(code), function(d){
+      if(d&&d.status==='ok'&&d.project){
+        // อัปเดต cache เฉพาะโครงการนี้
+        let arr = JSON.parse(localStorage.getItem(PROJ_KEY)||'[]');
+        const idx = arr.findIndex(x=>x.code===code);
+        if(idx>-1) arr[idx] = Object.assign(arr[idx], d.project); else arr.push(d.project);
+        localStorage.setItem(PROJ_KEY, JSON.stringify(arr));
+      }
     }, function(){});
     return;
   }
 
-  // 2. ไม่มี cache — fetch จาก cloud (เฉพาะครั้งแรก)
-  const url = getGasUrl();
+  // 3. ไม่มี cache — fetch โครงการเดียวจาก cloud
   if (url) {
     await new Promise(resolve => {
-      gasJsonp(url+'?action=getProjects', function(d) {
-        if(d&&d.status==='ok'&&d.projects){
-          localStorage.setItem(PROJ_KEY, JSON.stringify(d.projects));
-          _cloudProjects = d.projects;
-          p = d.projects.find(x=>x.code===code);
+      gasJsonp(url+'?action=getProjectForSurvey&projectCode='+encodeURIComponent(code), function(d) {
+        if(d&&d.status==='ok'&&d.project){
+          p = d.project;
+          let arr = JSON.parse(localStorage.getItem(PROJ_KEY)||'[]');
+          const idx = arr.findIndex(x=>x.code===code);
+          if(idx>-1) arr[idx]=p; else arr.push(p);
+          localStorage.setItem(PROJ_KEY, JSON.stringify(arr));
         }
         resolve();
       }, resolve);
@@ -1648,18 +1657,16 @@ async function saveAdminCreds(){
   const u=document.getElementById('s-admin-user').value.trim();
   const p=document.getElementById('s-admin-pass').value;
   if(!u) return alert('กรุณากรอกชื่อผู้ใช้');
-  const old=getCreds();
-  const newPass = p||old.pass;
-  // บันทึก local
-  localStorage.setItem(CREDS_KEY, JSON.stringify({user:u, pass:newPass}));
-  // บันทึก GAS (cloud)
+  if(!p) return alert('กรุณากรอกรหัสผ่านใหม่ (ต้องระบุทุกครั้งที่บันทึก)');
+  // บันทึกที่ GAS เท่านั้น — ไม่เก็บรหัสผ่านใน browser
   const gasUrl=getGasUrl();
   if(gasUrl){
     await new Promise(resolve=>{
-      gasJsonp(gasUrl+'?action=saveAdmin&user='+encodeURIComponent(u)+'&pass='+encodeURIComponent(newPass),
+      gasJsonp(gasUrl+'?action=saveAdmin&user='+encodeURIComponent(u)+'&pass='+encodeURIComponent(p),
         function(d){resolve(d);}, function(){resolve(null);});
     });
   }
+  document.getElementById('s-admin-pass').value='';
   showToast('✅ บันทึก Admin credentials แล้ว — มีผลทุกเครื่อง');
 }
 function saveGasUrl(){const url=document.getElementById('s-gas-url').value.trim();localStorage.setItem(GAS_KEY,url);updateGasStatus();showToast('บันทึก GAS URL แล้ว');}
@@ -2055,9 +2062,16 @@ function gasJsonp(url, onSuccess, onError) {
     if (onSuccess) onSuccess(data);
   };
   const s = document.createElement('script');
-  // ส่ง adminToken ถ้ามี ไม่งั้นส่ง apiKey
-  const _authParam = _adminToken ? ('adminToken=' + _adminToken) : ('apiKey=' + GAS_API_KEY);
-  s.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + cbName + '&' + _authParam + '&t=' + Date.now();
+  // แนบ auth: admin → adminToken, ลูกบ้าน → surveyToken+projectCode
+  // (เฉพาะ getSurveyToken ที่แนบ apiKey เองใน URL อยู่แล้ว)
+  let _authParam = '';
+  if (_adminToken) {
+    _authParam = 'adminToken=' + _adminToken;
+  } else if (_surveyAuth && _surveyAuth.surveyToken) {
+    _authParam = 'surveyToken=' + _surveyAuth.surveyToken + '&projectCode=' + encodeURIComponent(_surveyAuth.projectCode);
+  }
+  const _sep = _authParam ? ('&' + _authParam) : '';
+  s.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + cbName + _sep + '&t=' + Date.now();
   s.onerror = () => { clearTimeout(timeout); delete window[cbName]; if (onError) onError(); };
   document.head.appendChild(s);
 }
@@ -2073,7 +2087,12 @@ function gasFormPost(url, params) {
   form.action = url;
   form.target = iframe.name;
   form.style.display = 'none';
-  const _authObj = _adminToken ? { adminToken: _adminToken } : { apiKey: GAS_API_KEY };
+  let _authObj = {};
+  if (_adminToken) {
+    _authObj = { adminToken: _adminToken };
+  } else if (_surveyAuth && _surveyAuth.surveyToken) {
+    _authObj = { surveyToken: _surveyAuth.surveyToken, projectCode: _surveyAuth.projectCode };
+  }
   const allParams = Object.assign(_authObj, params);
   Object.entries(allParams).forEach(([k, v]) => {
     const inp = document.createElement('input');
